@@ -71,6 +71,7 @@ export interface RegisteredAccount {
   name: string;
   email: string;
   role: 'user' | 'admin';
+  phone_number?: string;
   passcode?: string;
   slug?: string;
   created_at?: string;

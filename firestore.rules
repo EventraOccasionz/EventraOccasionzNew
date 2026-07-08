@@ -17,14 +17,15 @@ service cloud.firestore {
 
     function isSystemAdmin() {
       return isSignedIn() && (
-        request.auth.token.email == 'ddg27874@gmail.com' ||
-        exists(/databases/$(database)/documents/admin_users/$(request.auth.uid))
+        exists(/databases/$(database)/documents/admin_users/$(request.auth.uid)) ||
+        (exists(/databases/$(database)/documents/registered_accounts/$(request.auth.uid)) &&
+         getUserData().role == 'admin')
       );
     }
 
     function isAdmin() {
       return isSignedIn() && (
-        request.auth.token.email == 'ddg27874@gmail.com' ||
+        exists(/databases/$(database)/documents/admin_users/$(request.auth.uid)) ||
         (exists(/databases/$(database)/documents/registered_accounts/$(request.auth.uid)) &&
          getUserData().role == 'admin')
       );
@@ -102,6 +103,11 @@ service cloud.firestore {
       allow read: if isAdmin();
       allow create: if true;
       allow update, delete: if false;
+    }
+
+    // admin_otps
+    match /admin_otps/{userId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
     }
   }
 }

@@ -32,7 +32,8 @@ export default function ProtectedRoute({ children, allowedRoles = ['admin'] }: P
       try {
         const profileDoc = await getDoc(doc(db, 'registered_accounts', user.uid));
         const isAdminProfile = profileDoc.exists() && profileDoc.data()?.role === 'admin';
-        const isDevAdmin = user.email === 'ddg27874@gmail.com';
+        const whitelist = await dataService.getAdminWhitelist();
+        const isDevAdmin = user.email ? whitelist.includes(user.email.toLowerCase().trim()) : false;
 
         let isAdminInCollection = false;
         try {

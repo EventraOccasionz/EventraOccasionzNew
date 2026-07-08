@@ -4,8 +4,7 @@ import { motion } from 'framer-motion';
 import { dataService } from '../lib/dataService';
 import { verifyFirebaseConnection, db, auth } from '../lib/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { RecaptchaVerifier, PhoneAuthProvider, linkWithCredential, reauthenticateWithCredential } from 'firebase/auth';
-import { ShieldCheck, Loader2, AlertTriangle, RefreshCcw, Database, Lock, Phone } from 'lucide-react';
+import { Mail, ShieldCheck, Loader2, AlertTriangle, RefreshCcw, Database, Lock, Key } from 'lucide-react';
 
 export default function AdminLogin() {
   const [step, setStep] = useState(1);
@@ -16,8 +15,8 @@ export default function AdminLogin() {
   const [error, setError] = useState('');
   const [retrying, setRetrying] = useState(false);
   
-  const [verificationId, setVerificationId] = useState('');
-  const [adminPhone, setAdminPhone] = useState('');
+  const [previewUrl, setPreviewUrl] = useState('');
+  const [devOtp, setDevOtp] = useState('');
   const [lockoutTimer, setLockoutTimer] = useState(0);
 
   
@@ -40,13 +39,6 @@ export default function AdminLogin() {
   const isConfigured = dataService.isConfigured();
 
   useEffect(() => {
-    const win = window as any;
-    if (isConfigured && !win.recaptchaVerifier) {
-      win.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
-        size: 'invisible',
-      });
-    }
-
     const lockedUntil = localStorage.getItem('admin_lockout');
     if (lockedUntil && parseInt(lockedUntil) > Date.now()) {
       setLockoutTimer(Math.ceil((parseInt(lockedUntil) - Date.now()) / 1000));
@@ -76,34 +68,71 @@ export default function AdminLogin() {
         throw new Error('Authorized access denied. You do not possess administrator level clearance.');
       }
 
-      // Find phone number
-      let phone = '';
-      const adminDoc = await getDoc(doc(db, 'admin_users', user.uid));
-      if (adminDoc.exists() && adminDoc.data().phone_number) {
-        phone = adminDoc.data().phone_number;
-      } else {
+      // Generate a secure 6-digit OTP code
+      const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+      // Save the OTP in Firestore under the admin_otps collection
+      await setDoc(doc(db, 'admin_otps', user.uid), {
+        email: emailClean,
+        code: otpCode,
+        expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes validity
+        verified: false,
+        updatedAt: new Date().toISOString()
+      });
+
+      // Retrieve mobile number from Firestore to send OTP over MSG91 SMS if available
+      let mobileNumber = '';
+      try {
         const profileDoc = await getDoc(doc(db, 'registered_accounts', user.uid));
-        if (profileDoc.exists() && profileDoc.data().phone_number) {
-          phone = profileDoc.data().phone_number;
-        } else if (emailClean === 'ddg27874@gmail.com') {
-          phone = '+15555555555'; // Fallback
+        if (profileDoc.exists()) {
+          const profileData = profileDoc.data();
+          mobileNumber = profileData.phone || profileData.mobile || profileData.phoneNumber || '';
         }
+
+        // Also query admin_config for any customized/additional mapping
+        if (!mobileNumber) {
+          const configDoc = await getDoc(doc(db, 'venue_settings', 'admin_config'));
+          if (configDoc.exists()) {
+            const configData = configDoc.data();
+            if (configData.mobiles && configData.mobiles[emailClean]) {
+              mobileNumber = configData.mobiles[emailClean];
+            } else if (configData.mobile) {
+              mobileNumber = configData.mobile;
+            }
+          }
+        }
+      } catch (dbErr) {
+        console.warn('Could not fetch mobile number for 2FA, using default flow:', dbErr);
       }
 
-      if (!phone) {
-        await dataService.logout();
-        throw new Error('No registered mobile number found for this admin account. Contact system administrator.');
+      // Dispatch OTP email/SMS via our backend service
+      try {
+        const response = await fetch('/api/send-email-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            email: emailClean, 
+            otp: otpCode,
+            mobile: mobileNumber || undefined
+          })
+        });
+        const resData = await response.json();
+        if (!response.ok) {
+          throw new Error(resData.error || 'Failed to dispatch security code email.');
+        }
+        if (resData.previewUrl) {
+          setPreviewUrl(resData.previewUrl);
+        }
+        if (resData.otp) {
+          setDevOtp(resData.otp);
+        }
+      } catch (emailErr: any) {
+        console.error('Email dispatch failed, but OTP is saved in Firestore:', emailErr);
+        // We still continue to step 2 so user can login, they can check console or we can show a notice
       }
-
-      setAdminPhone(phone);
-
-      const appVerifier = (window as any).recaptchaVerifier;
-      const provider = new PhoneAuthProvider(auth);
-      const vid = await provider.verifyPhoneNumber(phone, appVerifier);
-      setVerificationId(vid);
 
       localStorage.removeItem('admin_failed_attempts');
-      await logSecurityEvent('LOGIN_STEP1_SUCCESS', 'Email and password verified', emailClean);
+      await logSecurityEvent('LOGIN_STEP1_SUCCESS', 'Email and password verified, OTP generated', emailClean);
       setStep(2);
 
     } catch (err: any) {
@@ -130,28 +159,35 @@ export default function AdminLogin() {
     setError('');
 
     try {
-      const credential = PhoneAuthProvider.credential(verificationId, otp);
-      if (auth.currentUser) {
-        try {
-          if (auth.currentUser.phoneNumber === adminPhone) {
-             await reauthenticateWithCredential(auth.currentUser, credential);
-          } else {
-             await linkWithCredential(auth.currentUser, credential);
-          }
-        } catch (linkErr: any) {
-           if (linkErr.code === 'auth/credential-already-in-use') {
-             throw new Error('This phone number is registered to a different account.');
-           }
-           // Fallback if already linked to this account
-           if (linkErr.code === 'auth/provider-already-linked') {
-             // Continue
-           } else {
-             throw linkErr;
-           }
-        }
+      if (!auth.currentUser) {
+        throw new Error('Your session has expired. Please log in again.');
       }
+
+      const uid = auth.currentUser.uid;
+      const otpDocRef = doc(db, 'admin_otps', uid);
+      const otpDoc = await getDoc(otpDocRef);
+
+      if (!otpDoc.exists()) {
+        throw new Error('Verification session not found. Please log in again.');
+      }
+
+      const otpData = otpDoc.data();
+      if (otpData.verified) {
+        throw new Error('This security code has already been verified.');
+      }
+
+      if (Date.now() > otpData.expiresAt) {
+        throw new Error('The security code has expired. Please log in again to request a new one.');
+      }
+
+      if (otpData.code !== otp.trim()) {
+        throw new Error('Incorrect code. Please verify the code sent to your email.');
+      }
+
+      // Mark OTP as verified
+      await setDoc(otpDocRef, { verified: true }, { merge: true });
       
-      await logSecurityEvent('LOGIN_SUCCESS', 'OTP verification successful, admin logged in', email);
+      await logSecurityEvent('LOGIN_SUCCESS', 'Email OTP verification successful, admin logged in', email);
       localStorage.setItem('admin_otp_verified', 'true');
       localStorage.setItem('admin_otp_timestamp', Date.now().toString());
       
@@ -160,8 +196,8 @@ export default function AdminLogin() {
       
     } catch (err: any) {
       console.error(err);
-      setError('Invalid OTP code. Please try again.');
-      await logSecurityEvent('OTP_FAILED', 'Invalid OTP code entered', email);
+      setError(err.message || 'Invalid OTP code. Please try again.');
+      await logSecurityEvent('OTP_FAILED', err.message || 'Invalid OTP code entered', email);
       
       const otpAttempts = parseInt(localStorage.getItem('admin_otp_failed_attempts') || '0') + 1;
       localStorage.setItem('admin_otp_failed_attempts', otpAttempts.toString());
@@ -284,12 +320,36 @@ export default function AdminLogin() {
           </form>
         ) : (
           <form onSubmit={handleVerifyOtp} className="space-y-6">
-            <div className="text-center p-4 bg-dark-3 rounded-xl border border-gold/20">
-              <Phone className="w-8 h-8 text-gold mx-auto mb-3" />
-              <p className="text-text-secondary text-sm tracking-wide">
-                A verification code has been sent to <br/><span className="text-gold font-bold">{adminPhone}</span>.
+            <div className="text-center p-4 bg-dark-3 rounded-xl border border-gold/20 flex flex-col items-center gap-2">
+              <Mail className="w-8 h-8 text-gold mb-1" />
+              <p className="text-text-secondary text-xs tracking-wide leading-relaxed">
+                A 2FA verification code has been dispatched to your registered email address:<br/>
+                <span className="text-cream font-bold block mt-1 font-mono">{email}</span>
               </p>
             </div>
+
+            {previewUrl && (
+              <div className="p-4 bg-gold/5 border border-gold/20 text-[10px] text-text-secondary rounded-lg leading-relaxed text-center space-y-2">
+                <span className="font-bold text-gold uppercase tracking-wider block">✦ Developer Mailbox Access ✦</span>
+                <p>Since the system is running in the sandbox workspace, the email has been sent via an Ethereal SMTP test account. You can open the mailbox below to read the message and retrieve the OTP code:</p>
+                <a 
+                  href={previewUrl} 
+                  target="_blank" 
+                  rel="noreferrer" 
+                  className="inline-block px-3 py-1.5 bg-gold/15 hover:bg-gold/30 border border-gold/40 text-gold font-bold rounded uppercase tracking-wider text-[9px] transition-all"
+                >
+                  Open Ethereal Mailbox ↗
+                </a>
+              </div>
+            )}
+
+            {!previewUrl && devOtp && (
+              <div className="p-4 bg-gold/5 border border-gold/20 text-[10px] text-text-secondary rounded-lg leading-relaxed text-center space-y-1">
+                <span className="font-bold text-gold uppercase tracking-wider block">✦ Sandbox Developer Mode ✦</span>
+                <p>The campaign API was triggered successfully. For instant sandbox verification, your generated 2FA security code is:</p>
+                <span className="text-xl text-gold font-bold block tracking-[0.2em] font-mono select-all bg-white/5 py-1.5 rounded mt-1">{devOtp}</span>
+              </div>
+            )}
 
             <div className="flex flex-col gap-2">
               <label className="text-[0.6rem] uppercase tracking-widest text-text-secondary ml-1">6-Digit Code</label>
@@ -321,7 +381,6 @@ export default function AdminLogin() {
             </p>
         </div>
       </motion.div>
-      <div id="recaptcha-container" className="absolute bottom-4 left-1/2 -translate-x-1/2 z-0"></div>
     </div>
   );
 }

@@ -11,6 +11,7 @@ export const dataService = {
   // Auth Operations
   signUp: authService.signUp.bind(authService),
   login: authService.login.bind(authService),
+  getAdminWhitelist: authService.getAdminWhitelist.bind(authService),
   signInWithGoogle: authService.signInWithGoogle.bind(authService),
   logout: authService.logout.bind(authService),
   getCurrentUser: authService.getCurrentUser.bind(authService),
@@ -48,6 +49,7 @@ export const dataService = {
   getFamilyBySlug: adminService.getFamilyBySlug.bind(adminService),
   getAccounts: adminService.getAccounts.bind(adminService),
   addAccount: adminService.addAccount.bind(adminService),
+  updateUserRoleAndPhone: adminService.updateUserRoleAndPhone.bind(adminService),
   getAuditLogs: adminService.getAuditLogs.bind(adminService),
   createAuditLog: adminService.createAuditLog.bind(adminService),
   getVenueSettings: adminService.getVenueSettings.bind(adminService),

@@ -51,6 +51,11 @@ export default function Footer() {
                 </a>
               </li>
             ))}
+            <li>
+              <Link to="/admin" className="text-sm text-text-secondary hover:text-gold transition-colors font-medium flex items-center gap-1 mt-1">
+                ✦ Admin Portal
+              </Link>
+            </li>
           </ul>
         </div>
 

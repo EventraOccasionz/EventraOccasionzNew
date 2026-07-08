@@ -15,6 +15,38 @@ export const authService = {
     return !!auth;
   },
 
+  async getAdminWhitelist(): Promise<string[]> {
+    const defaultWhitelist = ['eventraoccasionz@gmail.com', 'ddg27874@gmail.com'];
+    if (!this.isConfigured()) {
+      return defaultWhitelist;
+    }
+    try {
+      const docRef = doc(db, 'venue_settings', 'admin_config');
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (Array.isArray(data?.emails)) {
+          return data.emails.map((e: string) => e.trim().toLowerCase());
+        }
+      } else {
+        // Automatically seed admin_config in database
+        try {
+          await setDoc(docRef, {
+            emails: defaultWhitelist,
+            updated_at: new Date().toISOString()
+          });
+          console.log('[Auth Service] Admin whitelist seeded in database.');
+        } catch (seedErr) {
+          console.warn('[Auth Service] Failed to seed admin whitelist, using memory default:', seedErr);
+        }
+        return defaultWhitelist;
+      }
+    } catch (e) {
+      console.warn('Failed to fetch admin whitelist from db, using default fallback:', e);
+    }
+    return defaultWhitelist;
+  },
+
   async signUp(email: string, password: string, name: string, role: 'user' | 'admin' = 'user', slug = ''): Promise<any> {
     const cleanEmail = email.trim().toLowerCase();
     
@@ -59,15 +91,43 @@ export const authService = {
     }
 
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, emailLower, password);
+      const whitelist = await this.getAdminWhitelist();
+      const isWhitelisted = whitelist.includes(emailLower);
+
+      let userCredential;
+      try {
+        userCredential = await signInWithEmailAndPassword(auth, emailLower, password);
+      } catch (signInError: any) {
+        if (isWhitelisted && (signInError.code === 'auth/invalid-credential' || signInError.code === 'auth/user-not-found' || signInError.code === 'auth/invalid-email')) {
+          try {
+            userCredential = await createUserWithEmailAndPassword(auth, emailLower, password);
+          } catch (signUpError: any) {
+            throw signInError;
+          }
+        } else {
+          throw signInError;
+        }
+      }
       const user = userCredential.user;
       
       let role: 'user' | 'admin' = 'user';
       let name = 'User';
       
-      if (emailLower === 'ddg27874@gmail.com') {
+      if (isWhitelisted) {
         role = 'admin';
-        name = 'Administrator';
+        name = emailLower === 'eventraoccasionz@gmail.com' ? 'Eventra Admin' : (emailLower === 'ddg27874@gmail.com' ? 'Administrator' : 'Admin Staff');
+        try {
+          await setDoc(doc(db, 'registered_accounts', user.uid), {
+            id: user.uid,
+            name: name,
+            email: emailLower,
+            role: 'admin',
+            slug: '',
+            created_at: new Date().toISOString()
+          }, { merge: true });
+        } catch (syncErr) {
+          console.warn('Profile sync failed for super admin: ', syncErr);
+        }
       }
 
       // 1. Verify against admin_users whitelist directly (source of truth)
@@ -175,9 +235,12 @@ export const authService = {
       let name = user.displayName || 'Visitor';
       const emailLower = (user.email || '').trim().toLowerCase();
             
-      if (emailLower === 'ddg27874@gmail.com') {
+      const whitelist = await this.getAdminWhitelist();
+      const isWhitelisted = whitelist.includes(emailLower);
+
+      if (isWhitelisted) {
         role = 'admin';
-        name = 'Administrator';
+        name = emailLower === 'eventraoccasionz@gmail.com' ? 'Eventra Admin' : (emailLower === 'ddg27874@gmail.com' ? 'Administrator' : 'Admin Staff');
       }
 
       const adminPath = `admin_users/${user.uid}`;

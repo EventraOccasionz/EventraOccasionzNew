@@ -365,9 +365,12 @@ export default function LoadingGateway({ onUnlock, forcingGate = false, onCancel
       let isNewUser = false;
       let generatedPasscode = '';
 
-      if (emailLower === 'ddg27874@gmail.com') {
+      const whitelist = await dataService.getAdminWhitelist();
+      const isWhitelisted = whitelist.includes(emailLower);
+
+      if (isWhitelisted) {
         role = 'admin';
-        name = 'Administrator';
+        name = emailLower === 'eventraoccasionz@gmail.com' ? 'Eventra Admin' : (emailLower === 'ddg27874@gmail.com' ? 'Administrator' : 'Admin Staff');
       }
 
       // 1. Verify against admin_users whitelist directly (source of truth)

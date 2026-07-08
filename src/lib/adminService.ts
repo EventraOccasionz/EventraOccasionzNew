@@ -349,5 +349,45 @@ export const adminService = {
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, path);
     }
+  },
+
+  async updateUserRoleAndPhone(userId: string, role: 'user' | 'admin', phoneNumber?: string): Promise<void> {
+    const actor = localStorage.getItem('user_email') || 'system-admin';
+    if (!authService.isConfigured()) {
+      throw new Error('Database service is currently offline or unavailable.');
+    }
+    try {
+      // 1. Update registered_accounts
+      const accountRef = doc(db, 'registered_accounts', userId);
+      const updateData: any = { role };
+      if (phoneNumber !== undefined) {
+        updateData.phone_number = phoneNumber;
+      }
+      await setDoc(accountRef, updateData, { merge: true });
+
+      // 2. Synchronize to admin_users if role is admin
+      const adminRef = doc(db, 'admin_users', userId);
+      if (role === 'admin') {
+        const adminData: any = { role: 'admin' };
+        if (phoneNumber) {
+          adminData.phone_number = phoneNumber;
+        }
+        await setDoc(adminRef, adminData, { merge: true });
+      } else {
+        try {
+          await deleteDoc(adminRef);
+        } catch (_) {}
+      }
+
+      try {
+        await this.createAuditLog(
+          'Update User Role',
+          'Security',
+          `Updated user ID ${userId} role to ${role}${phoneNumber ? ` and phone to ${phoneNumber}` : ''} by admin ${actor}`
+        );
+      } catch (_) {}
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `registered_accounts/${userId}`);
+    }
   }
 };
