@@ -1,0 +1,65 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Jost:wght@200;300;400;500;600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-serif: "Cormorant Garamond", serif;
+  --font-sans: "Jost", sans-serif;
+  
+  --color-gold: #D4AF37;
+  --color-gold-light: #E5C76B;
+  --color-cream: #F5F5F0;
+  --color-dark: #050505;
+  --color-dark-2: #080808;
+  --color-dark-3: #121212;
+  --color-dark-4: #1A1A1A;
+  --color-text-primary: #F5F5F0;
+  --color-text-secondary: rgba(245, 245, 240, 0.6);
+}
+
+@layer base {
+  body {
+    @apply bg-dark text-text-primary font-sans font-light overflow-x-hidden;
+    cursor: default;
+  }
+}
+
+/* Sophisticated Dark styling updates */
+.luxury-glow {
+  background: radial-gradient(ellipse at 50% 45%, rgba(212, 175, 55, 0.07) 0%, transparent 65%);
+}
+
+.glass {
+  @apply bg-dark-3 border border-gold/10 backdrop-blur-2xl rounded-2xl;
+}
+
+.premium-card {
+  @apply bg-dark-3 border border-white/5 rounded-2xl p-6 md:p-8 relative overflow-hidden transition-all duration-500 hover:border-gold/20;
+}
+
+.btn-primary {
+  @apply px-6 md:px-8 py-3.5 md:py-3 bg-gold text-black text-[11px] font-bold uppercase tracking-[0.2em] rounded-xl hover:bg-gold-light transition-colors text-center cursor-pointer active:scale-95;
+}
+
+.btn-outline {
+  @apply px-6 md:px-8 py-3.5 md:py-3 bg-transparent border border-gold/40 text-gold text-[11px] font-bold uppercase tracking-[0.2em] rounded-xl hover:bg-gold hover:text-black transition-all text-center cursor-pointer active:scale-95;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #print-pass-area, #print-pass-area * {
+    visibility: visible;
+  }
+  #print-pass-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    background: white;
+  }
+  body {
+    background: white !important;
+  }
+}
+

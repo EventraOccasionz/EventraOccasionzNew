@@ -1,0 +1,6 @@
+{
+  "name": "Eventra Occasionz",
+  "description": "Advanced Premium Event & Wedding Management Platform with Guest Management, RSVP, Transport, and Room Booking systems.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
