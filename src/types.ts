@@ -1,5 +1,15 @@
 export type EventType = 'Wedding' | 'Birthday' | 'Corporate' | 'Anniversary' | 'Baby Shower' | 'Engagement' | 'Other';
 
+export interface WeddingEvent {
+  id: string;
+  couple_name: string;
+  event_name: string;
+  event_date: string;
+  venue: string;
+  status: 'Upcoming' | 'Ongoing' | 'Completed';
+  created_at: string;
+}
+
 export interface UploadedDocument {
   id: string;
   name: string;

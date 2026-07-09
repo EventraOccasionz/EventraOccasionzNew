@@ -16,12 +16,16 @@ export default function SecurityTab() {
     if (!user) return;
     try {
       const res = await fetch(`/api/2fa/status?uid=${user.uid}`);
-      const data = await res.json();
-      if (res.ok) {
-        setEnabled(data.enabled);
-      } else {
-        throw new Error(data.error || 'Failed to fetch 2FA status.');
+      if (!res.ok) {
+        const errorText = await res.text();
+        let errorMessage = 'Failed to fetch 2FA status.';
+        try {
+          const errorJson = JSON.parse(errorText);
+          if (errorJson.error) errorMessage = errorJson.error;
+        } catch (_) {}
+        throw new Error(errorMessage);
       }
+      const data = await res.json();
     } catch (err: any) {
       setError(err.message || 'Error communicating with security servers.');
     } finally {
@@ -54,10 +58,17 @@ export default function SecurityTab() {
         body: JSON.stringify({ uid: user.uid })
       });
 
-      const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to disable 2FA.');
+        const errorText = await response.text();
+        let errorMessage = 'Failed to disable 2FA.';
+        try {
+          const errorJson = JSON.parse(errorText);
+          if (errorJson.error) errorMessage = errorJson.error;
+        } catch (_) {}
+        throw new Error(errorMessage);
       }
+      
+      const data = await response.json();
 
       setEnabled(false);
       setSuccess('Two-factor authentication has been successfully disabled.');

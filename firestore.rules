@@ -73,6 +73,11 @@ service cloud.firestore {
       allow delete: if isSystemAdmin();
     }
 
+    // events
+    match /events/{eventId} {
+      allow read, write: if true;
+    }
+
     // inquiries
     match /inquiries/{inquiryId} {
       allow read: if isAdmin();

@@ -6,6 +6,7 @@ import InvitePage from './pages/InvitePage';
 import EntryPass from './pages/EntryPass';
 import AdminLogin from './pages/AdminLogin';
 import AdminDashboard from './pages/AdminDashboard';
+import EventSelector from './pages/EventSelector';
 import EnableTwoFactor from './pages/EnableTwoFactor';
 import BudgetPlanner from './pages/BudgetPlanner';
 import ProtectedRoute from './components/layout/ProtectedRoute';
@@ -25,6 +26,11 @@ export default function App() {
             <Route path="admin/enable-2fa" element={
               <ProtectedRoute>
                 <EnableTwoFactor />
+              </ProtectedRoute>
+            } />
+            <Route path="admin/events" element={
+              <ProtectedRoute>
+                <EventSelector />
               </ProtectedRoute>
             } />
             <Route path="admin" element={

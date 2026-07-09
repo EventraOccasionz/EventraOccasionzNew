@@ -36,16 +36,17 @@ export default function EnableTwoFactor() {
           })
         });
 
-        const data = await response.json();
-        console.log('[2FA Setup Debug] Received data:', { 
-          hasQrCode: !!data.qrCodeUrl, 
-          qrCodeLength: data.qrCodeUrl?.length,
-          recoveryCodesCount: data.recoveryCodes?.length 
-        });
-
         if (!response.ok) {
-          throw new Error(data.error || 'Failed to generate 2FA credentials.');
+          const errorText = await response.text();
+          let errorMessage = 'Failed to generate 2FA credentials.';
+          try {
+            const errorJson = JSON.parse(errorText);
+            if (errorJson.error) errorMessage = errorJson.error;
+          } catch (_) {}
+          throw new Error(errorMessage);
         }
+
+        const data = await response.json();
 
         if (active) {
           setQrCode(data.qrCodeUrl);
@@ -107,10 +108,17 @@ export default function EnableTwoFactor() {
         })
       });
 
-      const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error || 'Setup verification failed. Incorrect code.');
+        const errorText = await response.text();
+        let errorMessage = 'Setup verification failed. Incorrect code.';
+        try {
+          const errorJson = JSON.parse(errorText);
+          if (errorJson.error) errorMessage = errorJson.error;
+        } catch (_) {}
+        throw new Error(errorMessage);
       }
+      
+      const data = await response.json();
 
       // Mark local storage as 2FA-verified
       localStorage.setItem('admin_otp_verified', 'true');

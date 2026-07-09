@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useEvent } from '../context/EventContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { dataService } from '../lib/dataService';
 import { auth, db } from '../lib/firebase';
@@ -32,11 +33,18 @@ const SecurityTab = React.lazy(() => import('../components/admin/SecurityTab'));
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
+  const { activeEvent } = useEvent();
   const [loading, setLoading] = useState(true);
   const [families, setFamilies] = useState<Family[]>([]);
   const [rsvps, setRsvps] = useState<RSVP[]>([]);
   const [transports, setTransports] = useState<TransportRequest[]>([]);
   const [rooms, setRooms] = useState<RoomBooking[]>([]);
+
+  useEffect(() => {
+    if (!activeEvent) {
+      navigate('/admin/events');
+    }
+  }, [activeEvent, navigate]);
   
   // New CMS States
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);

@@ -68,6 +68,9 @@ export default function AdminLogin() {
 
       // Check 2FA Status via backend API
       const statusRes = await fetch(`/api/2fa/status?uid=${user.uid}`);
+      if (!statusRes.ok) {
+        throw new Error('Failed to retrieve 2FA status.');
+      }
       const statusData = await statusRes.json();
 
       localStorage.removeItem('admin_failed_attempts');
@@ -120,10 +123,17 @@ export default function AdminLogin() {
         })
       });
 
-      const resData = await response.json();
       if (!response.ok) {
-        throw new Error(resData.error || 'Incorrect code. Please check your Authenticator app or recovery codes.');
+        const errorText = await response.text();
+        let errorMessage = 'Incorrect code. Please check your Authenticator app or recovery codes.';
+        try {
+          const errorJson = JSON.parse(errorText);
+          if (errorJson.error) errorMessage = errorJson.error;
+        } catch (_) {}
+        throw new Error(errorMessage);
       }
+      
+      const resData = await response.json();
 
       await logSecurityEvent('LOGIN_SUCCESS', resData.isRecovery ? 'Recovery code login successful' : '2FA verification successful', email);
       localStorage.setItem('admin_otp_verified', 'true');
