@@ -169,8 +169,21 @@ export const authService = {
       
       return { user, role };
     } catch (error: any) {
-      console.error('Database authenticating identity errored:', error);
-      throw error;
+      const errCode = error.code || '';
+      let friendlyMessage = error.message || 'Authentication failed.';
+
+      if (errCode === 'auth/invalid-credential' || friendlyMessage.includes('invalid-credential')) {
+        friendlyMessage = 'Invalid email or password. Please verify your credentials.';
+      } else if (errCode === 'auth/user-not-found' || friendlyMessage.includes('user-not-found')) {
+        friendlyMessage = 'No registered account found with this email.';
+      } else if (errCode === 'auth/wrong-password' || friendlyMessage.includes('wrong-password')) {
+        friendlyMessage = 'Incorrect password. Please try again.';
+      } else if (errCode === 'auth/too-many-requests' || friendlyMessage.includes('too-many-requests')) {
+        friendlyMessage = 'Too many failed login attempts. Please try again later.';
+      }
+
+      console.warn('Database authenticating identity failed:', friendlyMessage);
+      throw new Error(friendlyMessage);
     }
   },
 

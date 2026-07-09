@@ -52,6 +52,21 @@ export default function ProtectedRoute({ children, allowedRoles = ['admin'] }: P
 
           if (!isOtpVerified || !isOtpFresh) {
             localStorage.removeItem('admin_otp_verified');
+            
+            // Allow access to the 2FA enablement page for authenticated admins who need to set it up
+            const isEnable2FaPage = location.pathname === '/admin/enable-2fa';
+            if (isEnable2FaPage) {
+              localStorage.setItem('user_email', user.email || '');
+              localStorage.setItem('user_role', 'admin');
+              localStorage.setItem('user_name', (profileDoc.exists() && profileDoc.data()?.name) || user.displayName || 'Administrator');
+              localStorage.setItem('is_admin', 'true');
+              if (active) {
+                setAuthorized(true);
+                setLoading(false);
+              }
+              return;
+            }
+
             if (active) {
               setAuthorized(false);
               setLoading(false);

@@ -80,6 +80,13 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    // wedding_leads
+    match /wedding_leads/{leadId} {
+      allow read: if isAdmin();
+      allow create: if true;
+      allow update, delete: if isAdmin();
+    }
+
     // services
     match /services/{serviceId} {
       allow read: if true;
@@ -108,6 +115,16 @@ service cloud.firestore {
     // admin_otps
     match /admin_otps/{userId} {
       allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // admin_2fa
+    match /admin_2fa/{userId} {
+      allow read, write: if true; // In development, allow client SDK access from server
+    }
+
+    // admin_2fa_pending
+    match /admin_2fa_pending/{userId} {
+      allow read, write: if true; // In development, allow client SDK access from server
     }
   }
 }

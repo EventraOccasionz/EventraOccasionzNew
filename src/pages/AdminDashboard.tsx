@@ -28,6 +28,7 @@ const StaffTab = React.lazy(() => import('../components/admin/StaffTab'));
 const MapTab = React.lazy(() => import('../components/admin/MapTab'));
 const DocumentsTab = React.lazy(() => import('../components/admin/DocumentsTab'));
 const CountdownTab = React.lazy(() => import('../components/admin/CountdownTab'));
+const SecurityTab = React.lazy(() => import('../components/admin/SecurityTab'));
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -47,7 +48,7 @@ export default function AdminDashboard() {
 
   // Search / Tab States
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'inquiries' | 'services' | 'gallery' | 'guests' | 'families' | 'transport' | 'rooms' | 'audit' | 'map' | 'documents' | 'countdown' | 'staff'>('inquiries');
+  const [activeTab, setActiveTab] = useState<'inquiries' | 'services' | 'gallery' | 'guests' | 'families' | 'transport' | 'rooms' | 'audit' | 'map' | 'documents' | 'countdown' | 'staff' | 'security'>('inquiries');
 
   // Modals & Editors
   const [showAddFamily, setShowAddFamily] = useState(false);
@@ -674,6 +675,7 @@ export default function AdminDashboard() {
 
           <div className="h-[1px] bg-white/5 my-3 hidden md:block" />
           <span className="hidden md:block text-[0.55rem] uppercase tracking-widest text-[#D4AF37]/50 ml-4 mb-3 font-bold">Security & Logs</span>
+          <TabButton active={activeTab === 'security'} icon={<Shield size={18} />} label="Clearance (2FA)" onClick={() => setActiveTab('security')} />
           <TabButton active={activeTab === 'audit'} icon={<Shield size={18} />} label="Audit Trails" onClick={() => setActiveTab('audit')} />
           <TabButton active={activeTab === 'staff'} icon={<Users size={18} />} label="Admin & Staff" onClick={() => setActiveTab('staff')} />
         </div>
@@ -786,6 +788,9 @@ export default function AdminDashboard() {
                 )}
                 {activeTab === 'staff' && (
                   <StaffTab />
+                )}
+                {activeTab === 'security' && (
+                  <SecurityTab />
                 )}
                 {activeTab === 'documents' && (
                   <DocumentsTab families={families} onRefresh={fetchData} showToast={showToast} />

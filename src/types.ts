@@ -129,3 +129,45 @@ export interface AuditLog {
   details: string;
 }
 
+export interface WeddingPlanningData {
+  eventType: string;
+  city: string;
+  style: 'Simple' | 'Premium' | 'Luxury' | 'Royal' | 'Destination Wedding';
+  guestCount: string;
+  functions: string;
+  services: string[];
+  hotelRequirement: 'Yes' | 'No' | 'Not Sure';
+  hotelDetails?: {
+    rooms: number;
+    category: string;
+    nights: number;
+  };
+  cateringPreference: string;
+  decorationPreference: string;
+  photographyPreference: string;
+  timeline: string;
+}
+
+export interface BudgetEstimate {
+  min: number;
+  max: number;
+  currency: string;
+}
+
+export interface PlannerRecommendation {
+  title: string;
+  content: string;
+  category: 'Tip' | 'Idea' | 'Saving' | 'Upgrade' | 'Season' | 'Vendor';
+}
+
+export interface LeadInquiry {
+  name: string;
+  phone: string;
+  email: string;
+  city: string;
+  eventDate: string;
+  guestCount: string;
+  requirements: string;
+  created_at: string;
+}
+

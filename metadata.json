@@ -1,6 +1,6 @@
 {
   "name": "Eventra Occasionz",
-  "description": "Advanced Premium Event & Wedding Management Platform with Guest Management, RSVP, Transport, and Room Booking systems.",
+  "description": "Premium AI Wedding Budget Planner for Eventra Occasionz - Estimate your wedding budget and get personalized planning recommendations.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

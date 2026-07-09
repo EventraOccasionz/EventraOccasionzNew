@@ -1,5 +1,7 @@
 import { motion } from 'framer-motion';
 import { useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
+import { Sparkles } from 'lucide-react';
 
 export default function Hero() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -132,17 +134,18 @@ export default function Hero() {
           transition={{ duration: 0.9, delay: 1.24 }}
           className="flex flex-col sm:flex-row gap-6 justify-center"
         >
+          <Link
+            to="/planner"
+            className="group px-10 py-4 bg-gold text-dark text-[0.74rem] tracking-[0.2em] uppercase font-bold transition-all hover:bg-gold-light hover:-translate-y-1 hover:shadow-[0_16px_48px_rgba(201,168,76,0.4)] flex items-center justify-center gap-2"
+          >
+            <Sparkles className="w-4 h-4 animate-pulse" />
+            AI Wedding Planner
+          </Link>
           <a
             href="#booking"
-            className="px-10 py-4 bg-gold text-dark text-[0.74rem] tracking-[0.2em] uppercase font-medium transition-all hover:bg-gold-light hover:-translate-y-1 hover:shadow-[0_16px_48px_rgba(201,168,76,0.32)]"
-          >
-            Book Your Event
-          </a>
-          <a
-            href="#gallery"
             className="px-10 py-4 border border-gold text-gold text-[0.74rem] tracking-[0.2em] uppercase transition-all hover:bg-gold/10 hover:-translate-y-1"
           >
-            View Our Work
+            Get a Quote
           </a>
         </motion.div>
       </div>

@@ -2,7 +2,16 @@ import express from 'express';
 import path from 'path';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import * as dotenv from 'dotenv';
-import nodemailer from 'nodemailer';
+import fs from 'fs';
+import { TOTP, NobleCryptoPlugin, ScureBase32Plugin } from 'otplib';
+const totp = new TOTP({
+  crypto: new NobleCryptoPlugin(),
+  base32: new ScureBase32Plugin()
+});
+import QRCode from 'qrcode';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getFirestore, doc, getDoc, setDoc, deleteDoc, updateDoc, getDocFromServer, initializeFirestore } from 'firebase/firestore';
+import { GoogleGenAI, Type } from "@google/genai";
 
 // Load environment variables from .env
 dotenv.config();
@@ -86,193 +95,303 @@ async function startServer() {
   // Support JSON bodies for custom endpoints
   app.use(express.json());
 
+  // Lazy initialization for Gemini AI
+  let genAI: GoogleGenAI | null = null;
+  const getGenAI = () => {
+    if (!genAI) {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error('GEMINI_API_KEY is not configured in environment variables');
+      }
+      genAI = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          }
+        }
+      });
+    }
+    return genAI;
+  };
+
+  // Initialize server-side Firebase Admin SDK using the workspace JSON config
+  const firebaseConfigPath = path.join(process.cwd(), 'firebase-applet-config.json');
+  let db: any;
+
+  if (fs.existsSync(firebaseConfigPath)) {
+    try {
+      const firebaseConfig = JSON.parse(fs.readFileSync(firebaseConfigPath, 'utf8'));
+      const firebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+      const firestore = (firebaseConfig as any).firestoreDatabaseId
+        ? initializeFirestore(firebaseApp, { localCache: undefined }, (firebaseConfig as any).firestoreDatabaseId)
+        : initializeFirestore(firebaseApp, { localCache: undefined });
+      
+      db = {
+        collection: (name: string) => ({
+          doc: (id: string) => ({
+            get: async () => {
+              const snap = await getDocFromServer(doc(firestore, name, id));
+              return { exists: snap.exists(), data: () => snap.data() };
+            },
+            set: (data: any, options?: any) => setDoc(doc(firestore, name, id), data, options),
+            delete: () => deleteDoc(doc(firestore, name, id)),
+            update: (data: any) => updateDoc(doc(firestore, name, id), data)
+          })
+        })
+      };
+      console.log(`[Server Firebase] Initialized Client Firestore with No Cache successfully.`);
+    } catch (err: any) {
+      console.error(`[Server Firebase] Initialization error:`, err.message);
+    }
+  } else {
+    console.warn(`[Server Firebase] firebase-applet-config.json not found.`);
+  }
+
   // Health check API
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', proxyTarget: target });
   });
 
-  // OTP Email sending API
-  app.post('/api/send-email-otp', async (req, res) => {
-    const { email, otp, mobile } = req.body;
-    if (!email || !otp) {
-      return res.status(400).json({ error: 'Missing email or otp in request body.' });
-    }
-
-    // Print OTP in console for easy development & testing bypass
-    console.log(`\n=============================================`);
-    console.log(`[SECURITY OTP GENERATED]`);
-    console.log(`Target Email: ${email}`);
-    if (mobile) {
-      console.log(`Target Mobile: ${mobile}`);
-    }
-    console.log(`OTP Code:     ${otp}`);
-    console.log(`=============================================\n`);
-
-    const msg91AuthKey = process.env.MSG91_AUTHKEY;
-
-    if (msg91AuthKey) {
-      console.log(`[Email/SMS Service] MSG91_AUTHKEY found. Triggering MSG91 Campaign API for ${email}...`);
-      try {
-        const variablesPayload = {
-          "global_otp:company_name": {
-            "type": "text",
-            "value": "Eventra Occasionz"
-          },
-          "global_otp:otp": {
-            "type": "text",
-            "value": otp
-          },
-          "company_name": {
-            "type": "text",
-            "value": "Eventra Occasionz"
-          },
-          "otp": {
-            "type": "text",
-            "value": otp
-          },
-          "name": {
-            "type": "text",
-            "value": "Eventra Occasionz"
-          }
-        };
-
-        const recipient: any = {
-          name: "Eventra Admin",
-          email: email,
-          variables: variablesPayload
-        };
-
-        if (mobile) {
-          // Clean non-digits (keep numbers only)
-          const cleanedMobile = mobile.replace(/\D/g, '');
-          if (cleanedMobile.length >= 10) {
-            recipient.mobiles = cleanedMobile;
-          }
-        }
-
-        const msg91Payload = {
-          data: {
-            sendTo: [
-              {
-                to: [recipient],
-                variables: variablesPayload
-              }
-            ],
-            reply_to: [
-              {
-                name: "Eventra Occasionz",
-                email: "eventraoccasionz@gmail.com"
-              }
-            ]
-          }
-        };
-
-        const campaignSlug = process.env.MSG91_CAMPAIGN_SLUG || 'eventra-occasionz';
-        const response = await fetch(`https://control.msg91.com/api/v5/campaign/api/campaigns/${campaignSlug}/run`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'authkey': msg91AuthKey.trim()
-          },
-          body: JSON.stringify(msg91Payload)
-        });
-
-        const textResponse = await response.text();
-        console.log(`[MSG91 Response] Status: ${response.status}, Body: ${textResponse}`);
-
-        if (!response.ok) {
-          throw new Error(`MSG91 API responded with status ${response.status}: ${textResponse}`);
-        }
-
-        return res.json({
-          success: true,
-          previewUrl: '',
-          otp: otp,
-          message: 'OTP campaign triggered successfully via MSG91.'
-        });
-      } catch (msg91Err: any) {
-        console.error('[MSG91 Service Error] Failed to send OTP via MSG91 campaign:', msg91Err);
-        // Fallback to SMTP/Nodemailer if MSG91 fails
-        console.log('[Email Service] Attempting fallback to SMTP transporter due to MSG91 failure...');
-      }
+  // 1. Get 2FA Status for an admin
+  app.get('/api/2fa/status', async (req, res) => {
+    const uid = req.query.uid as string;
+    if (!uid) {
+      return res.status(400).json({ error: 'Missing uid in request query parameters.' });
     }
 
     try {
-      let transporter;
-      let usingTestAccount = false;
-      let previewUrl = '';
+      if (!db) throw new Error('Firestore is not initialized on the server.');
+      
+      const docSnap = await db.collection('admin_2fa').doc(uid).get();
+      if (docSnap.exists) {
+        const data = docSnap.data();
+        return res.json({ enabled: !!data.enabled });
+      }
+      return res.json({ enabled: false });
+    } catch (err: any) {
+      console.error('[2FA Status Error]:', err);
+      return res.status(500).json({ error: 'Failed to retrieve 2FA status.', details: err.message });
+    }
+  });
 
-      // Check if SMTP is configured in environment
-      if (process.env.SMTP_HOST && process.env.SMTP_USER) {
-        console.log(`[Email Service] Using custom SMTP configuration: ${process.env.SMTP_HOST}`);
-        transporter = nodemailer.createTransport({
-          host: process.env.SMTP_HOST,
-          port: parseInt(process.env.SMTP_PORT || '587'),
-          secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
-          auth: {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASS || '',
-          },
-        });
-      } else {
-        console.log('[Email Service] Custom SMTP not configured. Generating Ethereal test account...');
-        const testAccount = await nodemailer.createTestAccount();
-        usingTestAccount = true;
-        transporter = nodemailer.createTransport({
-          host: (testAccount as any).smtp.host,
-          port: (testAccount as any).smtp.port,
-          secure: (testAccount as any).smtp.secure,
-          auth: {
-            user: (testAccount as any).user,
-            pass: (testAccount as any).pass,
-          },
-        });
+  // 2. Initiate 2FA Setup (Generate Secret, Recovery Codes, and QR Code)
+  app.post('/api/2fa/setup-initiate', async (req, res) => {
+    const { uid, email } = req.body;
+    if (!uid || !email) {
+      return res.status(400).json({ error: 'Missing uid or email in request body.' });
+    }
+
+    try {
+      if (!db) throw new Error('Firestore is not initialized on the server.');
+
+      const secret = totp.generateSecret();
+      const otpauth = totp.toURI({ 
+        secret, 
+        label: email, 
+        issuer: 'Eventra Occasionz' 
+      });
+      console.log(`[2FA Setup] Generated OTPAuth URI: ${otpauth.substring(0, 20)}...`);
+      const qrCodeUrl = await QRCode.toDataURL(otpauth);
+      console.log(`[2FA Setup] QR Code generated, length: ${qrCodeUrl?.length || 0}`);
+
+      // Generate 10 uppercase, 8-character alphanumeric recovery codes
+      const recoveryCodes: string[] = [];
+      for (let i = 0; i < 10; i++) {
+        const randomCode = Math.random().toString(36).substring(2, 10).toUpperCase();
+        recoveryCodes.push(randomCode);
       }
 
-      const info = await transporter.sendMail({
-        from: '"The Heritage Venue Admin" <no-reply@theheritagevenue.com>',
-        to: email,
-        subject: '✦ Admin Security OTP Verification Code',
-        text: `Your 2FA verification code is: ${otp}. This code is valid for 5 minutes.`,
-        html: `
-          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; border: 1px solid #e5e7eb; border-radius: 16px; background-color: #0d0d0d; color: #f3f4f6;">
-            <div style="text-align: center; margin-bottom: 24px;">
-              <h2 style="color: #d4af37; font-family: serif; font-style: italic; font-size: 28px; margin: 0; letter-spacing: 1px;">THE HERITAGE</h2>
-              <p style="color: #9ca3af; font-size: 9px; text-transform: uppercase; letter-spacing: 3px; margin: 4px 0 0 0;">Royal Wedding & Event Venue</p>
-            </div>
-            <hr style="border: 0; border-top: 1px solid rgba(212, 175, 55, 0.2); margin-bottom: 24px;" />
-            <p style="font-size: 14px; line-height: 1.6; color: #e5e7eb;">Namaste Administrator,</p>
-            <p style="font-size: 14px; line-height: 1.6; color: #9ca3af;">A secure login attempt was initiated for your administrator account <strong style="color: #f3f4f6;">${email}</strong>.</p>
-            <p style="font-size: 14px; line-height: 1.6; color: #9ca3af; margin-bottom: 30px;">Please enter the following 6-digit One-Time Passcode (OTP) to complete your multi-factor verification:</p>
-            
-            <div style="font-size: 36px; font-weight: bold; letter-spacing: 6px; text-align: center; margin: 30px auto; color: #d4af37; font-family: monospace; background: rgba(212, 175, 55, 0.05); padding: 20px; border-radius: 12px; border: 1px dashed rgba(212, 175, 55, 0.4); max-width: 280px; box-shadow: inset 0 0 10px rgba(0,0,0,0.5);">
-              ${otp}
-            </div>
-            
-            <p style="color: #ef4444; font-size: 11px; text-align: center; margin-top: 24px;">This security code is strictly confidential and will expire in 5 minutes.</p>
-            <p style="color: #9ca3af; font-size: 11px; text-align: center;">If you did not initiate this request, please secure your login credentials immediately.</p>
-            
-            <hr style="border: 0; border-top: 1px solid rgba(255, 255, 255, 0.05); margin: 30px 0 20px 0;" />
-            <p style="color: #6b7280; font-size: 9px; text-align: center; text-transform: uppercase; letter-spacing: 1px; margin: 0;">Automated Security Notification • The Heritage Venue Portal</p>
-          </div>
-        `,
+      // Save as pending configuration
+      await db.collection('admin_2fa_pending').doc(uid).set({
+        secret,
+        recoveryCodes,
+        email,
+        expiresAt: Date.now() + 15 * 60 * 1000 // 15 minutes validity
       });
 
-      if (usingTestAccount) {
-        previewUrl = nodemailer.getTestMessageUrl(info) || '';
-        console.log(`[Email Service] Test Email sent successfully! View message: ${previewUrl}`);
-      } else {
-        console.log(`[Email Service] Production Email sent successfully to ${email}. MessageId: ${info.messageId}`);
-      }
-
-      res.json({
-        success: true,
-        previewUrl,
-        message: 'OTP verification email dispatched successfully.'
+      return res.json({
+        qrCodeUrl,
+        recoveryCodes
       });
     } catch (err: any) {
-      console.error('[Email Service Error] Failed to send OTP email:', err);
-      res.status(500).json({ error: 'Failed to send OTP verification email.', details: err.message });
+      console.error('[2FA Setup Initiate Error]:', err);
+      return res.status(500).json({ error: 'Failed to initiate 2FA setup.', details: err.message });
+    }
+  });
+
+  // 3. Verify and Save 2FA Setup
+  app.post('/api/2fa/setup-verify', async (req, res) => {
+    const { uid, code } = req.body;
+    if (!uid || !code) {
+      return res.status(400).json({ error: 'Missing uid or code in request body.' });
+    }
+
+    try {
+      if (!db) throw new Error('Firestore is not initialized on the server.');
+
+      const pendingDocRef = db.collection('admin_2fa_pending').doc(uid);
+      const pendingSnap = await pendingDocRef.get();
+
+      if (!pendingSnap.exists) {
+        return res.status(400).json({ error: 'Verification session expired or not found. Please regenerate the QR code.' });
+      }
+
+      const pendingData = pendingSnap.data();
+      if (Date.now() > pendingData.expiresAt) {
+        await pendingDocRef.delete();
+        return res.status(400).json({ error: 'Verification session expired. Please restart 2FA setup.' });
+      }
+
+      const verifyResult = await totp.verify(code.trim(), { secret: pendingData.secret, epochTolerance: 1 });
+      const isValid = verifyResult.valid;
+      if (!isValid) {
+        return res.status(400).json({ error: 'Incorrect 6-digit Google Authenticator code. Please try again.' });
+      }
+
+      // 2FA setup successfully verified! Save to permanent storage
+      await db.collection('admin_2fa').doc(uid).set({
+        secret: pendingData.secret,
+        recoveryCodes: pendingData.recoveryCodes,
+        email: pendingData.email,
+        enabled: true,
+        updatedAt: new Date().toISOString()
+      });
+
+      // Clear the pending document
+      await pendingDocRef.delete();
+
+      return res.json({ success: true });
+    } catch (err: any) {
+      console.error('[2FA Setup Verify Error]:', err);
+      return res.status(500).json({ error: 'Failed to verify 2FA setup.', details: err.message });
+    }
+  });
+
+  // 4. Verify 2FA Login (TOTP code or Recovery code)
+  app.post('/api/2fa/verify-login', async (req, res) => {
+    const { uid, code } = req.body;
+    if (!uid || !code) {
+      return res.status(400).json({ error: 'Missing uid or code in request body.' });
+    }
+
+    try {
+      if (!db) throw new Error('Firestore is not initialized on the server.');
+
+      const activeDocRef = db.collection('admin_2fa').doc(uid);
+      const activeSnap = await activeDocRef.get();
+
+      if (!activeSnap.exists || !activeSnap.data().enabled) {
+        return res.status(400).json({ error: 'Two-factor authentication is not enabled for this account.' });
+      }
+
+      const activeData = activeSnap.data();
+      const codeClean = code.trim();
+
+      // Check if it's a 6-digit TOTP code
+      if (/^\d{6}$/.test(codeClean)) {
+        const verifyResult = await totp.verify(codeClean, { secret: activeData.secret, epochTolerance: 1 });
+        const isValid = verifyResult.valid;
+        if (isValid) {
+          return res.json({ success: true, isRecovery: false });
+        }
+      }
+
+      // If not matching or not a 6-digit number, check if it matches an active recovery code
+      const codeUpper = codeClean.toUpperCase();
+      if (Array.isArray(activeData.recoveryCodes) && activeData.recoveryCodes.includes(codeUpper)) {
+        // One-time recovery code matches! Remove it from the list
+        const updatedCodes = activeData.recoveryCodes.filter((rc: string) => rc !== codeUpper);
+        await activeDocRef.set({ recoveryCodes: updatedCodes }, { merge: true });
+
+        console.log(`[2FA Security] Admin used recovery code. ${updatedCodes.length} codes remaining.`);
+        return res.json({ 
+          success: true, 
+          isRecovery: true, 
+          message: 'One-time recovery code accepted. This code is now deactivated.',
+          remaining: updatedCodes.length 
+        });
+      }
+
+      return res.status(400).json({ error: 'Invalid Google Authenticator code or recovery code. Please try again.' });
+    } catch (err: any) {
+      console.error('[2FA Verify Login Error]:', err);
+      return res.status(500).json({ error: 'Failed to verify 2FA code.', details: err.message });
+    }
+  });
+
+  // 5. Disable 2FA
+  app.post('/api/2fa/disable', async (req, res) => {
+    const { uid } = req.body;
+    if (!uid) {
+      return res.status(400).json({ error: 'Missing uid in request body.' });
+    }
+
+    try {
+      if (!db) throw new Error('Firestore is not initialized on the server.');
+
+      // We delete the document to completely wipe the secret, which is great for security!
+      await db.collection('admin_2fa').doc(uid).delete();
+      
+      console.log(`[2FA Security] Disabled 2FA for admin user: ${uid}`);
+      return res.json({ success: true });
+    } catch (err: any) {
+      console.error('[2FA Disable Error]:', err);
+      return res.status(500).json({ error: 'Failed to disable 2FA.', details: err.message });
+    }
+  });
+
+  // AI Wedding Planner Recommendations
+  app.post('/api/planner/recommendations', async (req, res) => {
+    const { weddingData } = req.body;
+    if (!weddingData) {
+      return res.status(400).json({ error: 'Missing weddingData in request body.' });
+    }
+
+    try {
+      const ai = getGenAI();
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: `As an expert luxury wedding planner at Eventra Occasionz, provide 8-10 personalized recommendations for a ${weddingData.style} ${weddingData.eventType} in ${weddingData.city}. 
+        Details:
+        - Guest Count: ${weddingData.guestCount}
+        - Functions: ${weddingData.functions}
+        - Services: ${weddingData.services.join(', ')}
+        - Hotel: ${weddingData.hotelRequirement}
+        - Catering: ${weddingData.cateringPreference}
+        - Decoration: ${weddingData.decorationPreference}
+        - Photography: ${weddingData.photographyPreference}
+        - Timeline: ${weddingData.timeline}
+        
+        Provide the response in JSON format matching this schema:
+        Array<{ title: string, content: string, category: 'Tip' | 'Idea' | 'Saving' | 'Upgrade' | 'Season' | 'Vendor' }>`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                title: { type: Type.STRING },
+                content: { type: Type.STRING },
+                category: { type: Type.STRING, enum: ['Tip', 'Idea', 'Saving', 'Upgrade', 'Season', 'Vendor'] }
+              },
+              required: ["title", "content", "category"]
+            }
+          }
+        }
+      });
+
+      const recommendations = JSON.parse(response.text);
+      return res.json(recommendations);
+    } catch (err: any) {
+      console.error('[Gemini Recommendations Error]:', err);
+      // Fallback recommendations if Gemini fails
+      return res.json([
+        { title: 'Personalized Consultation', content: 'Book a free consultation with our experts for detailed planning.', category: 'Tip' },
+        { title: 'Venue Selection', content: 'Start looking at venues at least 6 months in advance for your desired dates.', category: 'Vendor' },
+        { title: 'Guest List', content: 'Finalize your guest list early to manage catering and accommodation costs better.', category: 'Saving' }
+      ]);
     }
   });
 
