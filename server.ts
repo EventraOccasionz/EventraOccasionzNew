@@ -150,17 +150,24 @@ async function startServer() {
   app.get('/api/2fa/status', async (req, res) => {
     const uid = req.query.uid as string;
     if (!uid) {
+      console.error('[2FA Status Error]: Missing uid');
       return res.status(400).json({ error: 'Missing uid in request query parameters.' });
     }
 
     try {
-      if (!db) throw new Error('Firestore is not initialized on the server.');
+      if (!db) {
+        console.error('[2FA Status Error]: Firestore is not initialized');
+        throw new Error('Firestore is not initialized on the server.');
+      }
       
+      console.log(`[2FA Status] Fetching status for uid: ${uid}`);
       const docSnap = await db.collection('admin_2fa').doc(uid).get();
       if (docSnap.exists) {
         const data = docSnap.data();
+        console.log(`[2FA Status] Result for ${uid}:`, !!data.enabled);
         return res.json({ enabled: !!data.enabled });
       }
+      console.log(`[2FA Status] Result for ${uid}: disabled (not found)`);
       return res.json({ enabled: false });
     } catch (err: any) {
       console.error('[2FA Status Error]:', err);

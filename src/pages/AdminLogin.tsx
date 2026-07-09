@@ -67,12 +67,21 @@ export default function AdminLogin() {
       }
 
       // Check 2FA Status via backend API
-      const statusRes = await fetch(`/api/2fa/status?uid=${user.uid}`);
-      if (!statusRes.ok) {
-        throw new Error('Failed to retrieve 2FA status.');
-      }
-      const statusData = await statusRes.json();
+      const check2FaStatus = async (uid: string, attempt = 1): Promise<any> => {
+        try {
+          const statusRes = await fetch(`/api/2fa/status?uid=${uid}`);
+          if (!statusRes.ok) throw new Error(`Status check failed with ${statusRes.status}`);
+          return await statusRes.json();
+        } catch (err: any) {
+          if (attempt < 3) {
+            console.warn(`[2FA Status] Retry attempt ${attempt} for uid: ${uid}`);
+            return check2FaStatus(uid, attempt + 1);
+          }
+          throw err;
+        }
+      };
 
+      const statusData = await check2FaStatus(user.uid);
       localStorage.removeItem('admin_failed_attempts');
 
       if (statusData.enabled) {
