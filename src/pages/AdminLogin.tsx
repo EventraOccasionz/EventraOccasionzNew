@@ -5,6 +5,7 @@ import { dataService } from '../lib/dataService';
 import { verifyFirebaseConnection, db, auth } from '../lib/firebase';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { Mail, ShieldCheck, Loader2, AlertTriangle, RefreshCcw, Database, Lock, Key } from 'lucide-react';
+import { totp } from '../lib/totp';
 
 export default function AdminLogin() {
   const [step, setStep] = useState(1);
@@ -58,6 +59,9 @@ export default function AdminLogin() {
     setLoading(true);
     setError('');
     const emailClean = email.toLowerCase().trim();
+    
+    let loggedInUser: any = null;
+
     try {
       const { user, role } = await dataService.login(emailClean, password);
 
@@ -65,9 +69,29 @@ export default function AdminLogin() {
         await dataService.logout();
         throw new Error('Authorized access denied. You do not possess administrator level clearance.');
       }
-
+      
+      loggedInUser = user;
+    } catch (err: any) {
+      setError(err?.message || 'Verification failed. Please check your credentials.');
+      await logSecurityEvent('LOGIN_FAILED', err?.message || 'Invalid credentials', emailClean);
+      
+      const attempts = parseInt(localStorage.getItem('admin_failed_attempts') || '0') + 1;
+      localStorage.setItem('admin_failed_attempts', attempts.toString());
+      if (attempts >= 5) {
+        const lockoutTime = Date.now() + 15 * 60 * 1000;
+        localStorage.setItem('admin_lockout', lockoutTime.toString());
+        setLockoutTimer(15 * 60);
+        setError('Too many failed attempts. Account temporarily locked for 15 minutes.');
+        await logSecurityEvent('ACCOUNT_LOCKED', 'Account locked due to 5 failed login attempts', emailClean);
+      }
+      setLoading(false);
+      return;
+    }
+    
+    // We get here ONLY if credentials were correct.
+    try {
       // Check 2FA Status via client SDK
-      const docRef = doc(db, 'admin_2fa', user.uid);
+      const docRef = doc(db, 'admin_2fa', loggedInUser.uid);
       let is2faEnabled = false;
       try {
         const docSnap = await getDoc(docRef);
@@ -93,18 +117,7 @@ export default function AdminLogin() {
       }
 
     } catch (err: any) {
-      setError(err?.message || 'Verification failed. Please check your credentials.');
-      await logSecurityEvent('LOGIN_FAILED', err?.message || 'Invalid credentials', emailClean);
-      
-      const attempts = parseInt(localStorage.getItem('admin_failed_attempts') || '0') + 1;
-      localStorage.setItem('admin_failed_attempts', attempts.toString());
-      if (attempts >= 5) {
-        const lockoutTime = Date.now() + 15 * 60 * 1000;
-        localStorage.setItem('admin_lockout', lockoutTime.toString());
-        setLockoutTimer(15 * 60);
-        setError('Too many failed attempts. Account temporarily locked for 15 minutes.');
-        await logSecurityEvent('ACCOUNT_LOCKED', 'Account locked due to 5 failed login attempts', emailClean);
-      }
+      setError(err?.message || 'Failed to retrieve 2FA status.');
     } finally {
       setLoading(false);
     }
@@ -160,8 +173,22 @@ export default function AdminLogin() {
           })
         });
 
-        const resData = await response.json();
-        if (!response.ok || !resData.valid) {
+        const contentType = response.headers.get('content-type');
+        let isValid = false;
+        
+        if (contentType && contentType.includes('application/json')) {
+          const resData = await response.json();
+          if (!response.ok) {
+            throw new Error(resData.error || 'Verification failed.');
+          }
+          isValid = resData.valid;
+        } else {
+          console.warn("Backend API not found, falling back to client-side verification");
+          const verifyResult = await totp.verify(codeClean, { secret: activeData.secret, epochTolerance: 1 });
+          isValid = verifyResult.valid;
+        }
+
+        if (!isValid) {
           throw new Error('Incorrect code. Please check your Authenticator app or recovery codes.');
         }
       }

@@ -5,6 +5,8 @@ import { auth, db } from '../lib/firebase';
 import { doc, setDoc } from 'firebase/firestore';
 import { Shield, Key, Download, Copy, Check, Loader2, AlertTriangle, ArrowRight, LogOut } from 'lucide-react';
 import { dataService } from '../lib/dataService';
+import { totp } from '../lib/totp';
+import QRCode from 'qrcode';
 
 export default function EnableTwoFactor() {
   const navigate = useNavigate();
@@ -32,14 +34,29 @@ export default function EnableTwoFactor() {
         const response = await fetch('/api/2fa/generate-secret', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: user.email
-          })
+          body: JSON.stringify({ email: user.email })
         });
-
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.error || 'Failed to generate 2FA credentials.');
+        
+        const contentType = response.headers.get('content-type');
+        let data;
+        
+        if (contentType && contentType.includes('application/json')) {
+          data = await response.json();
+          if (!response.ok) {
+            throw new Error(data.error || 'Failed to generate 2FA credentials.');
+          }
+        } else {
+          // Fallback to client-side generation if API returns HTML (Vercel 404 fallback)
+          console.warn("Backend API not found, falling back to client-side generation");
+          const newSecret = totp.generateSecret();
+          const otpauth = totp.toURI({ secret: newSecret, label: user.email || 'Admin', issuer: 'Eventra Occasionz' });
+          const qrCodeUrl = await QRCode.toDataURL(otpauth);
+          
+          const newRecoveryCodes: string[] = [];
+          for (let i = 0; i < 10; i++) {
+            newRecoveryCodes.push(Math.random().toString(36).substring(2, 10).toUpperCase());
+          }
+          data = { qrCodeUrl, recoveryCodes: newRecoveryCodes, secret: newSecret };
         }
 
         if (active) {
@@ -97,15 +114,26 @@ export default function EnableTwoFactor() {
       const response = await fetch('/api/2fa/verify-code', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          secret: secret,
-          code: code
-        })
+        body: JSON.stringify({ secret, code })
       });
+      
+      const contentType = response.headers.get('content-type');
+      let isValid = false;
+      
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || 'Setup verification failed.');
+        }
+        isValid = data.valid;
+      } else {
+        console.warn("Backend API not found, falling back to client-side verification");
+        const verifyResult = await totp.verify(code, { secret, epochTolerance: 1 });
+        isValid = verifyResult.valid;
+      }
 
-      const data = await response.json();
-      if (!response.ok || !data.valid) {
-        throw new Error(data.error || 'Setup verification failed. Incorrect code.');
+      if (!isValid) {
+        throw new Error('Setup verification failed. Incorrect code.');
       }
 
       // 2FA setup successfully verified! Save to permanent storage
