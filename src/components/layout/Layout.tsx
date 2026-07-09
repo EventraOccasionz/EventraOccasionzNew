@@ -1,4 +1,4 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import Navbar from './Navbar';
 import Footer from './Footer';
 import { useEffect, useState } from 'react';
@@ -6,6 +6,8 @@ import AuthModal from './AuthModal';
 
 export default function Layout() {
   const [forcingGate, setForcingGate] = useState(false);
+  const location = useLocation();
+  const isInviteLink = location.pathname.startsWith('/invite');
 
   // Listener for direct gate login request
   useEffect(() => {
@@ -106,11 +108,11 @@ export default function Layout() {
           setForcingGate(false);
         }} 
       />
-      <Navbar />
+      {!isInviteLink && <Navbar />}
       <main className="flex-grow">
         <Outlet />
       </main>
-      <Footer />
+      {!isInviteLink && <Footer />}
     </div>
   );
 }
