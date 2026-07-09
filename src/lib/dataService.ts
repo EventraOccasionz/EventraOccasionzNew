@@ -3,16 +3,10 @@ import { bookingService } from './bookingService';
 import { galleryService } from './galleryService';
 import { adminService } from './adminService';
 import { storageService } from './storageService';
-import { eventService } from './eventService';
 
 export const dataService = {
   // Config state checks
   isConfigured: authService.isConfigured.bind(authService),
-
-  // Events Operations
-  getEvents: eventService.getEvents.bind(eventService),
-  addEvent: eventService.addEvent.bind(eventService),
-  deleteEvent: eventService.deleteEvent.bind(eventService),
 
   // Auth Operations
   signUp: authService.signUp.bind(authService),

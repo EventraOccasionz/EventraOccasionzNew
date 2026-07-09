@@ -73,20 +73,8 @@ service cloud.firestore {
       allow delete: if isSystemAdmin();
     }
 
-    // events
-    match /events/{eventId} {
-      allow read, write: if true;
-    }
-
     // inquiries
     match /inquiries/{inquiryId} {
-      allow read: if isAdmin();
-      allow create: if true;
-      allow update, delete: if isAdmin();
-    }
-
-    // wedding_leads
-    match /wedding_leads/{leadId} {
       allow read: if isAdmin();
       allow create: if true;
       allow update, delete: if isAdmin();
@@ -124,12 +112,7 @@ service cloud.firestore {
 
     // admin_2fa
     match /admin_2fa/{userId} {
-      allow read, write: if true; // In development, allow client SDK access from server
-    }
-
-    // admin_2fa_pending
-    match /admin_2fa_pending/{userId} {
-      allow read, write: if true; // In development, allow client SDK access from server
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
     }
   }
 }

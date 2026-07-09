@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { auth } from '../lib/firebase';
+import { auth, db } from '../lib/firebase';
+import { doc, setDoc } from 'firebase/firestore';
 import { Shield, Key, Download, Copy, Check, Loader2, AlertTriangle, ArrowRight, LogOut } from 'lucide-react';
 import { dataService } from '../lib/dataService';
 
@@ -11,6 +12,7 @@ export default function EnableTwoFactor() {
   const [verifying, setVerifying] = useState(false);
   const [qrCode, setQrCode] = useState('');
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
+  const [secret, setSecret] = useState('');
   const [copied, setCopied] = useState(false);
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
@@ -27,30 +29,23 @@ export default function EnableTwoFactor() {
       }
 
       try {
-        const response = await fetch('/api/2fa/setup-initiate', {
+        const response = await fetch('/api/2fa/generate-secret', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            uid: user.uid,
             email: user.email
           })
         });
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          let errorMessage = 'Failed to generate 2FA credentials.';
-          try {
-            const errorJson = JSON.parse(errorText);
-            if (errorJson.error) errorMessage = errorJson.error;
-          } catch (_) {}
-          throw new Error(errorMessage);
-        }
-
         const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to generate 2FA credentials.');
+        }
 
         if (active) {
           setQrCode(data.qrCodeUrl);
           setRecoveryCodes(data.recoveryCodes);
+          setSecret(data.secret);
           setLoading(false);
         }
       } catch (err: any) {
@@ -99,26 +94,28 @@ export default function EnableTwoFactor() {
     }
 
     try {
-      const response = await fetch('/api/2fa/setup-verify', {
+      const response = await fetch('/api/2fa/verify-code', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          uid: user.uid,
+          secret: secret,
           code: code
         })
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        let errorMessage = 'Setup verification failed. Incorrect code.';
-        try {
-          const errorJson = JSON.parse(errorText);
-          if (errorJson.error) errorMessage = errorJson.error;
-        } catch (_) {}
-        throw new Error(errorMessage);
-      }
-      
       const data = await response.json();
+      if (!response.ok || !data.valid) {
+        throw new Error(data.error || 'Setup verification failed. Incorrect code.');
+      }
+
+      // 2FA setup successfully verified! Save to permanent storage
+      await setDoc(doc(db, 'admin_2fa', user.uid), {
+        secret: secret,
+        recoveryCodes: recoveryCodes,
+        email: user.email,
+        enabled: true,
+        updatedAt: new Date().toISOString()
+      });
 
       // Mark local storage as 2FA-verified
       localStorage.setItem('admin_otp_verified', 'true');

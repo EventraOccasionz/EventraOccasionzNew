@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { dataService } from '../lib/dataService';
 import { verifyFirebaseConnection, db, auth } from '../lib/firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { Mail, ShieldCheck, Loader2, AlertTriangle, RefreshCcw, Database, Lock, Key } from 'lucide-react';
 
 export default function AdminLogin() {
@@ -66,25 +66,23 @@ export default function AdminLogin() {
         throw new Error('Authorized access denied. You do not possess administrator level clearance.');
       }
 
-      // Check 2FA Status via backend API
-      const check2FaStatus = async (uid: string, attempt = 1): Promise<any> => {
-        try {
-          const statusRes = await fetch(`/api/2fa/status?uid=${uid}`);
-          if (!statusRes.ok) throw new Error(`Status check failed with ${statusRes.status}`);
-          return await statusRes.json();
-        } catch (err: any) {
-          if (attempt < 3) {
-            console.warn(`[2FA Status] Retry attempt ${attempt} for uid: ${uid}`);
-            return check2FaStatus(uid, attempt + 1);
-          }
-          throw err;
+      // Check 2FA Status via client SDK
+      const docRef = doc(db, 'admin_2fa', user.uid);
+      let is2faEnabled = false;
+      try {
+        const docSnap = await getDoc(docRef);
+        is2faEnabled = docSnap.exists() && docSnap.data().enabled;
+      } catch (e: any) {
+        console.error("2FA Check Error:", e);
+        if (e.message?.includes('Missing or insufficient permissions')) {
+           throw new Error('Security configuration is currently updating. Please wait a minute and try again.');
         }
-      };
+        throw e;
+      }
 
-      const statusData = await check2FaStatus(user.uid);
       localStorage.removeItem('admin_failed_attempts');
 
-      if (statusData.enabled) {
+      if (is2faEnabled) {
         // Prompt for 2FA verification code
         await logSecurityEvent('LOGIN_STEP1_SUCCESS', 'Email and password verified, prompting for 2FA', emailClean);
         setStep(2);
@@ -123,33 +121,57 @@ export default function AdminLogin() {
       }
 
       const uid = auth.currentUser.uid;
-      const response = await fetch('/api/2fa/verify-login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          uid,
-          code: otp
-        })
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        let errorMessage = 'Incorrect code. Please check your Authenticator app or recovery codes.';
-        try {
-          const errorJson = JSON.parse(errorText);
-          if (errorJson.error) errorMessage = errorJson.error;
-        } catch (_) {}
-        throw new Error(errorMessage);
+      const activeDocRef = doc(db, 'admin_2fa', uid);
+      let activeSnap;
+      try {
+        activeSnap = await getDoc(activeDocRef);
+      } catch (e: any) {
+        if (e.message?.includes('Missing or insufficient permissions')) {
+          throw new Error('Security configuration is currently updating. Please wait a minute and try again.');
+        }
+        throw e;
       }
-      
-      const resData = await response.json();
 
-      await logSecurityEvent('LOGIN_SUCCESS', resData.isRecovery ? 'Recovery code login successful' : '2FA verification successful', email);
+      if (!activeSnap.exists() || !activeSnap.data().enabled) {
+        throw new Error('Two-factor authentication is not enabled for this account.');
+      }
+
+      const activeData = activeSnap.data();
+      const codeClean = otp.trim();
+      let isRecovery = false;
+      let recoveryRemaining = 0;
+
+      // Check if it matches an active recovery code
+      const codeUpper = codeClean.toUpperCase();
+      if (Array.isArray(activeData.recoveryCodes) && activeData.recoveryCodes.includes(codeUpper)) {
+        // One-time recovery code matches! Remove it from the list
+        const updatedCodes = activeData.recoveryCodes.filter((rc: string) => rc !== codeUpper);
+        await updateDoc(activeDocRef, { recoveryCodes: updatedCodes });
+        isRecovery = true;
+        recoveryRemaining = updatedCodes.length;
+      } else {
+        // Not a recovery code, verify TOTP
+        const response = await fetch('/api/2fa/verify-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            secret: activeData.secret,
+            code: codeClean
+          })
+        });
+
+        const resData = await response.json();
+        if (!response.ok || !resData.valid) {
+          throw new Error('Incorrect code. Please check your Authenticator app or recovery codes.');
+        }
+      }
+
+      await logSecurityEvent('LOGIN_SUCCESS', isRecovery ? 'Recovery code login successful' : '2FA verification successful', email);
       localStorage.setItem('admin_otp_verified', 'true');
       localStorage.setItem('admin_otp_timestamp', Date.now().toString());
 
-      if (resData.isRecovery) {
-        alert(`Recovery code accepted. This code has been deactivated. You have ${resData.remaining} recovery codes remaining.`);
+      if (isRecovery) {
+        alert(`Recovery code accepted. This code has been deactivated. You have ${recoveryRemaining} recovery codes remaining.`);
       }
 
       const from = location.state?.from?.pathname || '/admin';

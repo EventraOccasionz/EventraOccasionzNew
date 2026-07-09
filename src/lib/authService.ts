@@ -153,7 +153,7 @@ export const authService = {
             name = profile.name || 'Visitor';
           }
         } catch (profileErr) {
-          handleFirestoreError(profileErr, OperationType.GET, profilePath);
+          console.error("Profile fetch error:", profileErr); handleFirestoreError(profileErr, OperationType.GET, profilePath);
         }
       }
       

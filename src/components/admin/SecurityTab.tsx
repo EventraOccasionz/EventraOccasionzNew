@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Shield, ShieldAlert, ShieldCheck, Loader2, Key, HelpCircle } from 'lucide-react';
-import { auth } from '../../lib/firebase';
+import { auth, db } from '../../lib/firebase';
+import { doc, getDoc, deleteDoc } from 'firebase/firestore';
 
 export default function SecurityTab() {
   const navigate = useNavigate();
@@ -15,18 +16,8 @@ export default function SecurityTab() {
     const user = auth.currentUser;
     if (!user) return;
     try {
-      const res = await fetch(`/api/2fa/status?uid=${user.uid}`);
-      if (!res.ok) {
-        const errorText = await res.text();
-        let errorMessage = 'Failed to fetch 2FA status.';
-        try {
-          const errorJson = JSON.parse(errorText);
-          if (errorJson.error) errorMessage = errorJson.error;
-        } catch (_) {}
-        throw new Error(errorMessage);
-      }
-      const data = await res.json();
-      setEnabled(data.enabled);
+      const docSnap = await getDoc(doc(db, 'admin_2fa', user.uid));
+      setEnabled(docSnap.exists() && docSnap.data().enabled);
     } catch (err: any) {
       setError(err.message || 'Error communicating with security servers.');
     } finally {
@@ -53,24 +44,7 @@ export default function SecurityTab() {
     }
 
     try {
-      const response = await fetch('/api/2fa/disable', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uid: user.uid })
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        let errorMessage = 'Failed to disable 2FA.';
-        try {
-          const errorJson = JSON.parse(errorText);
-          if (errorJson.error) errorMessage = errorJson.error;
-        } catch (_) {}
-        throw new Error(errorMessage);
-      }
-      
-      const data = await response.json();
-
+      await deleteDoc(doc(db, 'admin_2fa', user.uid));
       setEnabled(false);
       setSuccess('Two-factor authentication has been successfully disabled.');
     } catch (err: any) {
