@@ -11,6 +11,7 @@ export interface UploadedDocument {
 
 export interface Family {
   id: string;
+  event_id?: string;
   name: string; // e.g. "Sharma Family"
   access_code: string; // e.g. "SHARMA2026"
   slug: string; // e.g. "sharma-family"
@@ -24,6 +25,7 @@ export interface Family {
 
 export interface RSVP {
   id: string;
+  event_id?: string;
   family_id: string;
   guest_name: string;
   email: string;
@@ -33,12 +35,14 @@ export interface RSVP {
   custom_notes?: string;
   dietary_requirements?: string;
   events: string[]; // e.g. ["Haldi", "Mehndi", "Wedding"]
+  checked_in?: boolean;
   created_at: string;
   updated_at?: string;
 }
 
 export interface TransportRequest {
   id: string;
+  event_id?: string;
   family_id: string;
   mode: 'Car' | 'Bus' | 'Train' | 'Flight';
   need_cab: boolean;
@@ -51,6 +55,7 @@ export interface TransportRequest {
 
 export interface RoomBooking {
   id: string;
+  event_id?: string;
   family_id: string;
   hotel_name?: string;
   room_number?: string;

@@ -1,13 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { Clock, Save, Calendar, Loader2, Sparkles, AlertCircle, Eye, EyeOff, Upload, Heart, FileText, User } from 'lucide-react';
 import { dataService } from '../../lib/dataService';
+import { db } from '../../lib/firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 interface CountdownTabProps {
   showToast: (type: 'success' | 'error', message: string) => void;
   onRefreshAll?: () => void;
+  selectedEventId?: string | null;
+  selectedEvent?: any;
 }
 
-export default function CountdownTab({ showToast, onRefreshAll }: CountdownTabProps) {
+export default function CountdownTab({ showToast, onRefreshAll, selectedEventId, selectedEvent }: CountdownTabProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -26,29 +30,72 @@ export default function CountdownTab({ showToast, onRefreshAll }: CountdownTabPr
 
   useEffect(() => {
     const fetchSettings = async () => {
+      setLoading(true);
       try {
-        const settings = await dataService.getVenueSettings();
-        if (settings) {
-          if (settings.wedding_date) {
-            setWeddingDate(settings.wedding_date.substring(0, 16));
+        if (selectedEventId) {
+          let settings: any = null;
+          if (dataService.isConfigured()) {
+            try {
+              const docSnap = await getDoc(doc(db, 'venue_settings', `countdown_${selectedEventId}`));
+              if (docSnap.exists()) {
+                settings = docSnap.data();
+              }
+            } catch (e) {
+              console.warn('Error reading from Firestore venue_settings:', e);
+            }
+          } else {
+            const cached = localStorage.getItem(`local_countdown_${selectedEventId}`);
+            if (cached) {
+              settings = JSON.parse(cached);
+            }
           }
-          if (settings.countdown_label) {
-            setCountdownLabel(settings.countdown_label);
+
+          if (settings) {
+            if (settings.wedding_date) setWeddingDate(settings.wedding_date.substring(0, 16));
+            if (settings.countdown_label) setCountdownLabel(settings.countdown_label);
+            if (settings.show_countdown !== undefined) setShowCountdown(settings.show_countdown);
+            if (settings.couple_one_name) setCoupleOneName(settings.couple_one_name);
+            if (settings.couple_two_name) setCoupleTwoName(settings.couple_two_name);
+            if (settings.welcome_msg) setWelcomeMsg(settings.welcome_msg);
+            if (settings.couple_image) setCoupleImage(settings.couple_image);
+          } else {
+            // Pre-populate with Selected Event values
+            if (selectedEvent) {
+              setCoupleOneName(selectedEvent.groom || '');
+              setCoupleTwoName(selectedEvent.bride || '');
+              if (selectedEvent.date) {
+                setWeddingDate(`${selectedEvent.date}T18:00:00`);
+              }
+              setCountdownLabel('Ceremony Begins In');
+              setShowCountdown(true);
+              setWelcomeMsg(`Your presence adds color to our laughter, warmth to our moments, and completes our joy. We eagerly look forward to starting this special chapter of our lives in your honored presence.`);
+              setCoupleImage('https://images.unsplash.com/photo-1583939003579-730e3918a45a?auto=format&fit=crop&w=1200&q=80');
+            }
           }
-          if (settings.show_countdown !== undefined) {
-            setShowCountdown(settings.show_countdown);
-          }
-          if (settings.couple_one_name) {
-            setCoupleOneName(settings.couple_one_name);
-          }
-          if (settings.couple_two_name) {
-            setCoupleTwoName(settings.couple_two_name);
-          }
-          if (settings.welcome_msg) {
-            setWelcomeMsg(settings.welcome_msg);
-          }
-          if (settings.couple_image) {
-            setCoupleImage(settings.couple_image);
+        } else {
+          const settings = await dataService.getVenueSettings();
+          if (settings) {
+            if (settings.wedding_date) {
+              setWeddingDate(settings.wedding_date.substring(0, 16));
+            }
+            if (settings.countdown_label) {
+              setCountdownLabel(settings.countdown_label);
+            }
+            if (settings.show_countdown !== undefined) {
+              setShowCountdown(settings.show_countdown);
+            }
+            if (settings.couple_one_name) {
+              setCoupleOneName(settings.couple_one_name);
+            }
+            if (settings.couple_two_name) {
+              setCoupleTwoName(settings.couple_two_name);
+            }
+            if (settings.welcome_msg) {
+              setWelcomeMsg(settings.welcome_msg);
+            }
+            if (settings.couple_image) {
+              setCoupleImage(settings.couple_image);
+            }
           }
         }
       } catch (err: any) {
@@ -59,7 +106,7 @@ export default function CountdownTab({ showToast, onRefreshAll }: CountdownTabPr
       }
     };
     fetchSettings();
-  }, [showToast]);
+  }, [showToast, selectedEventId, selectedEvent]);
 
   // Real-time Countdown Timer Preview Loop
   useEffect(() => {
@@ -109,19 +156,30 @@ export default function CountdownTab({ showToast, onRefreshAll }: CountdownTabPr
     e.preventDefault();
     setSaving(true);
     try {
-      const currentSettings = await dataService.getVenueSettings();
       const updated = {
-        ...currentSettings,
         wedding_date: weddingDate,
         countdown_label: countdownLabel,
         show_countdown: showCountdown,
         couple_one_name: coupleOneName,
         couple_two_name: coupleTwoName,
         welcome_msg: welcomeMsg,
-        couple_image: coupleImage
+        couple_image: coupleImage,
+        updated_at: new Date().toISOString()
       };
 
-      await dataService.updateVenueSettings(updated);
+      if (selectedEventId) {
+        if (dataService.isConfigured()) {
+          await setDoc(doc(db, 'venue_settings', `countdown_${selectedEventId}`), updated, { merge: true });
+        } else {
+          localStorage.setItem(`local_countdown_${selectedEventId}`, JSON.stringify(updated));
+        }
+      } else {
+        const currentSettings = await dataService.getVenueSettings();
+        await dataService.updateVenueSettings({
+          ...currentSettings,
+          ...updated
+        });
+      }
       showToast('success', 'Wedding invitation settings saved successfully!');
       if (onRefreshAll) onRefreshAll();
     } catch (err: any) {

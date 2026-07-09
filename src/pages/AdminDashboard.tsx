@@ -4,15 +4,16 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { dataService } from '../lib/dataService';
 import { auth, db } from '../lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, collection, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, collection, onSnapshot, setDoc } from 'firebase/firestore';
 import { Family, RSVP, TransportRequest, RoomBooking, Inquiry, Service, GalleryItem } from '../types';
 import { 
   Users, UserCheck, Clock, Car, Hotel, Search, Plus, 
   Trash2, Download, LogOut, CheckCircle2,
   XCircle, Loader2, RefreshCcw, Database,
   Briefcase, Image, Edit, FileText, Save, Eye, EyeOff,
-  PlusCircle, ArrowUp, ArrowDown, Shield, Map, QrCode
+  PlusCircle, ArrowUp, ArrowDown, Shield, Map, QrCode, MapPin, Heart, Sparkles, MessageSquare, PieChart
 } from 'lucide-react';
+import { EventData } from '../components/admin/EventsTab';
 
 // Lazy Loaded Modular Panels
 const AnalyticsPanel = React.lazy(() => import('../components/admin/AnalyticsPanel'));
@@ -30,6 +31,11 @@ const DocumentsTab = React.lazy(() => import('../components/admin/DocumentsTab')
 const CountdownTab = React.lazy(() => import('../components/admin/CountdownTab'));
 const SecurityTab = React.lazy(() => import('../components/admin/SecurityTab'));
 
+const EventsTab = React.lazy(() => import('../components/admin/EventsTab'));
+const CheckinTab = React.lazy(() => import('../components/admin/CheckinTab'));
+const NotificationsTab = React.lazy(() => import('../components/admin/NotificationsTab'));
+const ReportsTab = React.lazy(() => import('../components/admin/ReportsTab'));
+
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -46,9 +52,23 @@ export default function AdminDashboard() {
   const [isConfigured, setIsConfigured] = useState(dataService.isConfigured());
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' });
 
+  const [events, setEvents] = useState<EventData[]>([
+    { id: 'evt_001', name: 'Royal Rajput Wedding', bride: 'Priya', groom: 'Rahul', date: '2026-10-15', venue: 'Umaid Bhawan Palace', status: 'Active', created_at: '2026-07-09T00:00:00Z' },
+    { id: 'evt_002', name: 'Beachfront Nuptials', bride: 'Anjali', groom: 'Vikram', date: '2026-11-20', venue: 'Taj Exotica, Goa', status: 'Active', created_at: '2026-07-09T00:00:00Z' },
+    { id: 'evt_003', name: 'Heritage Celebration', bride: 'Sneha', groom: 'Arjun', date: '2026-12-05', venue: 'Rambagh Palace', status: 'Active', created_at: '2026-07-09T00:00:00Z' },
+    { id: 'evt_004', name: 'Desert Oasis Vows', bride: 'Kriti', groom: 'Rohan', date: '2027-01-12', venue: 'Suryagarh Jaisalmer', status: 'Active', created_at: '2026-07-09T00:00:00Z' },
+    { id: 'evt_005', name: 'Lakeside Romance', bride: 'Meera', groom: 'Kabir', date: '2027-02-14', venue: 'The Oberoi Udaivilas', status: 'Active', created_at: '2026-07-09T00:00:00Z' },
+    { id: 'evt_006', name: 'City Skyline Soiree', bride: 'Riya', groom: 'Aditya', date: '2027-03-22', venue: 'St. Regis Mumbai', status: 'Active', created_at: '2026-07-09T00:00:00Z' },
+    { id: 'evt_007', name: 'Tropical Paradise', bride: 'Nisha', groom: 'Dev', date: '2027-04-10', venue: 'Taj Andaman', status: 'Active', created_at: '2026-07-09T00:00:00Z' },
+    { id: 'evt_008', name: 'Winter Wonderland', bride: 'Pooja', groom: 'Karan', date: '2027-05-18', venue: 'Khyber, Gulmarg', status: 'Active', created_at: '2026-07-09T00:00:00Z' },
+    { id: 'evt_009', name: 'Vineyard Affair', bride: 'Simran', groom: 'Jay', date: '2027-06-25', venue: 'Sula Vineyards', status: 'Active', created_at: '2026-07-09T00:00:00Z' },
+    { id: 'evt_010', name: 'Grand Palace Union', bride: 'Aisha', groom: 'Samir', date: '2027-07-30', venue: 'Falaknuma Palace', status: 'Active', created_at: '2026-07-09T00:00:00Z' }
+  ]);
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+
   // Search / Tab States
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'inquiries' | 'services' | 'gallery' | 'guests' | 'families' | 'transport' | 'rooms' | 'audit' | 'map' | 'documents' | 'countdown' | 'staff' | 'security'>('inquiries');
+  const [activeTab, setActiveTab] = useState<'events' | 'inquiries' | 'services' | 'gallery' | 'guests' | 'families' | 'transport' | 'rooms' | 'audit' | 'map' | 'documents' | 'countdown' | 'staff' | 'security' | 'checkin' | 'notifications' | 'reports'>('events');
 
   // Modals & Editors
   const [showAddFamily, setShowAddFamily] = useState(false);
@@ -170,6 +190,13 @@ export default function AdminDashboard() {
     };
   }, [navigate]);
 
+  // Handle auto-redirection to Event selection/management tab if selectedEventId becomes null
+  useEffect(() => {
+    if (!selectedEventId && ['guests', 'families', 'transport', 'rooms', 'documents', 'countdown', 'checkin', 'notifications', 'reports'].includes(activeTab)) {
+      setActiveTab('events');
+    }
+  }, [selectedEventId, activeTab]);
+
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -190,11 +217,116 @@ export default function AdminDashboard() {
       setInquiries(inq);
       setServices(srv);
       setGallery(gal);
+
+      // Fetch dynamic events
+      try {
+        if (dataService.isConfigured()) {
+          const eventsDoc = await getDoc(doc(db, 'venue_settings', 'events_config'));
+          if (eventsDoc.exists()) {
+            const data = eventsDoc.data();
+            if (data && Array.isArray(data.events)) {
+              setEvents(data.events);
+            }
+          }
+        } else {
+          const cached = localStorage.getItem('local_events');
+          if (cached) {
+            setEvents(JSON.parse(cached));
+          }
+        }
+      } catch (err) {
+        console.warn('Failed loading events config:', err);
+      }
     } catch (err: any) {
       console.error('Error fetching admin data:', err);
       showToast('error', `Database Fetch Failure: ${err?.message || 'Firebase service is currently unavailable.'}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCreateEvent = async (newEvent: Omit<EventData, 'id' | 'created_at'>) => {
+    const createdEvent: EventData = {
+      ...newEvent,
+      id: 'evt_' + Math.random().toString(36).substring(2, 9),
+      created_at: new Date().toISOString()
+    };
+    const updatedEvents = [...events, createdEvent];
+    setEvents(updatedEvents);
+
+    try {
+      if (dataService.isConfigured()) {
+        await setDoc(doc(db, 'venue_settings', 'events_config'), { events: updatedEvents });
+      } else {
+        localStorage.setItem('local_events', JSON.stringify(updatedEvents));
+      }
+      showToast('success', `Event "${newEvent.name}" registered successfully.`);
+    } catch (err) {
+      console.error(err);
+      showToast('error', 'Failed to persist new event in cloud.');
+    }
+  };
+
+  const handleDeleteEvent = async (id: string) => {
+    const updatedEvents = events.filter(e => e.id !== id);
+    setEvents(updatedEvents);
+    if (selectedEventId === id) {
+      setSelectedEventId(null);
+    }
+
+    try {
+      if (dataService.isConfigured()) {
+        await setDoc(doc(db, 'venue_settings', 'events_config'), { events: updatedEvents });
+      } else {
+        localStorage.setItem('local_events', JSON.stringify(updatedEvents));
+      }
+      showToast('success', 'Event deleted.');
+    } catch (err) {
+      showToast('error', 'Failed to delete event.');
+    }
+  };
+
+  const handleUpdateEventStatus = async (id: string, newStatus: 'Active' | 'Completed' | 'Archived') => {
+    const updatedEvents = events.map(e => e.id === id ? { ...e, status: newStatus } : e);
+    setEvents(updatedEvents);
+
+    try {
+      if (dataService.isConfigured()) {
+        await setDoc(doc(db, 'venue_settings', 'events_config'), { events: updatedEvents });
+      } else {
+        localStorage.setItem('local_events', JSON.stringify(updatedEvents));
+      }
+      showToast('success', `Event status updated to ${newStatus}.`);
+    } catch (err) {
+      showToast('error', 'Failed to update event status.');
+    }
+  };
+
+  const handleToggleCheckin = async (id: string, currentStatus: boolean) => {
+    const updatedStatus = !currentStatus;
+    try {
+      if (dataService.isConfigured()) {
+        await setDoc(doc(db, 'rsvp', id), { checked_in: updatedStatus }, { merge: true });
+      } else {
+        const sessionMock = JSON.parse(sessionStorage.getItem('mock_rsvps') || '[]');
+        const exists = sessionMock.some((r: any) => r.id === id);
+        let updatedMock;
+        if (exists) {
+          updatedMock = sessionMock.map((r: any) => r.id === id ? { ...r, checked_in: updatedStatus } : r);
+        } else {
+          const matched = rsvps.find(r => r.id === id);
+          if (matched) {
+            sessionMock.push({ ...matched, checked_in: updatedStatus });
+          }
+          updatedMock = sessionMock;
+        }
+        sessionStorage.setItem('mock_rsvps', JSON.stringify(updatedMock));
+      }
+      setRsvps(prev => prev.map(r => r.id === id ? { ...r, checked_in: updatedStatus } : r));
+      showToast('success', updatedStatus ? 'Guest marked as checked in.' : 'Guest check-in cleared.');
+    } catch (err) {
+      console.error(err);
+      showToast('error', 'Failed updating check-in status.');
     }
   };
 
@@ -216,7 +348,8 @@ export default function AdminDashboard() {
         name: newFamily.name,
         max_guests: newFamily.max_guests,
         slug,
-        access_code: code
+        access_code: code,
+        event_id: selectedEventId || undefined
       });
       
       setShowAddFamily(false);
@@ -482,15 +615,25 @@ export default function AdminDashboard() {
     }
   };
 
-  // Exporters
-  const handleExport = () => {
-    let dataToExport = [];
-    let headers = [];
-    let fileName = `eventra_export_${activeTab}.csv`;
+  // --- RSVP Event Filtering ---
+  const isRsvpTab = ['guests', 'families', 'transport', 'rooms', 'documents', 'countdown', 'checkin', 'notifications', 'reports'].includes(activeTab);
+  const displayFamilies = selectedEventId ? families.filter(f => f.event_id === selectedEventId) : families;
+  const validFamilyIds = new Set(displayFamilies.map(f => f.id));
+  
+  const displayRsvps = selectedEventId ? rsvps.filter(r => r.event_id === selectedEventId || validFamilyIds.has(r.family_id)) : rsvps;
+  const displayTransports = selectedEventId ? transports.filter(t => t.event_id === selectedEventId || validFamilyIds.has(t.family_id)) : transports;
+  const displayRooms = selectedEventId ? rooms.filter(r => r.event_id === selectedEventId || validFamilyIds.has(r.family_id)) : rooms;
 
-    if (activeTab === 'guests') {
+  // Exporters
+  const handleExport = (explicitType?: 'guests' | 'families' | 'transport' | 'rooms') => {
+    const targetType = explicitType || activeTab;
+    let dataToExport: any[] = [];
+    let headers: string[] = [];
+    let fileName = `eventra_export_${targetType}.csv`;
+
+    if (targetType === 'guests') {
       headers = ['Name', 'Email', 'Attending', 'Adult Guests', 'Kids', 'Dietary Requirements', 'Events', 'Last Updated'];
-      dataToExport = rsvps.map(r => [
+      dataToExport = displayRsvps.map(r => [
         r.guest_name, 
         r.email, 
         r.attending ? 'Yes' : 'No', 
@@ -500,33 +643,33 @@ export default function AdminDashboard() {
         (r.events || []).join('; '),
         new Date(r.updated_at || r.created_at).toLocaleString()
       ]);
-    } else if (activeTab === 'families') {
+    } else if (targetType === 'families') {
       headers = ['Family', 'Slug', 'Access Code', 'Capacity'];
-      dataToExport = families.map(f => [f.name, f.slug, f.access_code, f.max_guests]);
-    } else if (activeTab === 'transport') {
+      dataToExport = displayFamilies.map(f => [f.name, f.slug, f.access_code, f.max_guests]);
+    } else if (targetType === 'transport') {
       headers = ['Family', 'Arrival Mode', 'Cab Requested', 'Pickup Location', 'Arrival Time', 'Details'];
-      dataToExport = transports.map(t => [
-        families.find(f => f.id === t.family_id)?.name || 'Guest',
+      dataToExport = displayTransports.map(t => [
+        displayFamilies.find(f => f.id === t.family_id)?.name || 'Guest',
         t.mode || 'N/A',
         t.need_cab ? 'Yes' : 'No',
         t.pickup_location || 'N/A',
         t.arrival_time || 'N/A',
         t.details || 'N/A'
       ]);
-    } else if (activeTab === 'rooms') {
+    } else if (targetType === 'rooms') {
       headers = ['Family', 'Hotel Name', 'Check-in', 'Check-out', 'Room Number', 'Status'];
-      dataToExport = rooms.map(r => [
-        families.find(f => f.id === r.family_id)?.name || 'Guest',
+      dataToExport = displayRooms.map(r => [
+        displayFamilies.find(f => f.id === r.family_id)?.name || 'Guest',
         r.hotel_name || 'N/A',
         r.check_in || 'N/A',
         r.check_out || 'N/A',
         r.room_number || 'N/A',
         r.status || 'Pending'
       ]);
-    } else if (activeTab === 'inquiries') {
+    } else if (targetType === 'inquiries') {
       headers = ['Name', 'Email', 'Phone', 'Service selected', 'Submitted Date', 'Status'];
       dataToExport = inquiries.map(i => [i.name, i.email, i.phone, i.service_selected, i.created_at, i.status]);
-    } else if (activeTab === 'services') {
+    } else if (targetType === 'services') {
       headers = ['Service Code', 'Category', 'Name', 'Price', 'Visible'];
       dataToExport = services.map(s => [s.id, s.cat, s.name, s.price || '-', s.visible !== false ? 'Yes' : 'No']);
     } else {
@@ -591,12 +734,12 @@ export default function AdminDashboard() {
     (g.cat || '').toLowerCase().includes(term)
   );
 
-  const filteredRSVPs = rsvps.filter(r => 
+  const filteredRSVPs = displayRsvps.filter(r => 
     (r.guest_name || '').toLowerCase().includes(term) || 
     (r.email || '').toLowerCase().includes(term)
   );
 
-  const filteredFamilies = families.filter(f => 
+  const filteredFamilies = displayFamilies.filter(f => 
     (f.name || '').toLowerCase().includes(term) ||
     (f.access_code || '').toLowerCase().includes(term)
   );
@@ -658,20 +801,31 @@ export default function AdminDashboard() {
         
         {/* Navigation Sidebar Drawer */}
         <div className="w-full md:w-64 border-b md:border-b-0 md:border-r border-gold/10 p-4 flex flex-row md:flex-col gap-1 overflow-x-auto min-w-0 shrink-0 select-none">
-          <span className="hidden md:block text-[0.55rem] uppercase tracking-widest text-[#D4AF37]/50 ml-4 mb-3 font-bold">Content CMS</span>
+          <span className="hidden md:block text-[0.55rem] uppercase tracking-widest text-[#D4AF37]/50 ml-4 mb-3 font-bold">Global Content CMS</span>
           <TabButton active={activeTab === 'inquiries'} icon={<FileText size={18} />} label="Inquiries" onClick={() => setActiveTab('inquiries')} />
           <TabButton active={activeTab === 'services'} icon={<Briefcase size={18} />} label="Services Editor" onClick={() => setActiveTab('services')} />
           <TabButton active={activeTab === 'gallery'} icon={<Image size={18} />} label="Gallery Curator" onClick={() => setActiveTab('gallery')} />
           <TabButton active={activeTab === 'map'} icon={<Map size={18} />} label="Venue Map Setup" onClick={() => setActiveTab('map')} />
-          <TabButton active={activeTab === 'countdown'} icon={<Clock size={18} />} label="Event Countdown" onClick={() => setActiveTab('countdown')} />
 
           <div className="h-[1px] bg-white/5 my-3 hidden md:block" />
-          <span className="hidden md:block text-[0.55rem] uppercase tracking-widest text-[#D4AF37]/50 ml-4 mb-3 font-bold">Event Reservation</span>
-          <TabButton active={activeTab === 'guests'} icon={<UserCheck size={18} />} label="RSVPs" onClick={() => setActiveTab('guests')} />
-          <TabButton active={activeTab === 'transport'} icon={<Car size={18} />} label="Transport" onClick={() => setActiveTab('transport')} />
-          <TabButton active={activeTab === 'rooms'} icon={<Hotel size={18} />} label="Hotel" onClick={() => setActiveTab('rooms')} />
-          <TabButton active={activeTab === 'families'} icon={<Users size={18} />} label="Invites Linker" onClick={() => setActiveTab('families')} />
-          <TabButton active={activeTab === 'documents'} icon={<FileText size={18} />} label="Guest Documents" onClick={() => setActiveTab('documents')} />
+          <span className="hidden md:block text-[0.55rem] uppercase tracking-widest text-[#D4AF37]/50 ml-4 mb-3 font-bold">Event Workspace</span>
+          <TabButton active={activeTab === 'events'} icon={<Sparkles size={18} />} label="Events" onClick={() => setActiveTab('events')} />
+
+          {selectedEventId && (
+            <>
+              <div className="h-[1px] bg-white/5 my-3 hidden md:block" />
+              <span className="hidden md:block text-[0.55rem] uppercase tracking-widest text-[#D4AF37]/50 ml-4 mb-3 font-bold">Event Management</span>
+              <TabButton active={activeTab === 'guests'} icon={<UserCheck size={18} />} label="RSVPs" onClick={() => setActiveTab('guests')} />
+              <TabButton active={activeTab === 'transport'} icon={<Car size={18} />} label="Transport" onClick={() => setActiveTab('transport')} />
+              <TabButton active={activeTab === 'rooms'} icon={<Hotel size={18} />} label="Hotel" onClick={() => setActiveTab('rooms')} />
+              <TabButton active={activeTab === 'families'} icon={<Users size={18} />} label="Invites Linker" onClick={() => setActiveTab('families')} />
+              <TabButton active={activeTab === 'documents'} icon={<FileText size={18} />} label="Guest Documents" onClick={() => setActiveTab('documents')} />
+              <TabButton active={activeTab === 'countdown'} icon={<Clock size={18} />} label="Event Countdown" onClick={() => setActiveTab('countdown')} />
+              <TabButton active={activeTab === 'checkin'} icon={<CheckCircle2 size={18} />} label="Check-in" onClick={() => setActiveTab('checkin')} />
+              <TabButton active={activeTab === 'notifications'} icon={<MessageSquare size={18} />} label="Notifications" onClick={() => setActiveTab('notifications')} />
+              <TabButton active={activeTab === 'reports'} icon={<PieChart size={18} />} label="Reports" onClick={() => setActiveTab('reports')} />
+            </>
+          )}
 
           <div className="h-[1px] bg-white/5 my-3 hidden md:block" />
           <span className="hidden md:block text-[0.55rem] uppercase tracking-widest text-[#D4AF37]/50 ml-4 mb-3 font-bold">Security & Logs</span>
@@ -683,19 +837,111 @@ export default function AdminDashboard() {
         {/* Dynamic Display Area */}
         <div className="flex-grow p-6 md:p-10 min-h-[550px] overflow-x-auto">
           
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
-            <div className="relative flex-grow max-w-md">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary" size={18} />
-              <input 
-                type="text" 
-                placeholder="Filter index search..." 
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                className="w-full bg-white/5 border border-gold/10 pl-12 pr-6 py-3 text-sm outline-none focus:border-gold transition-colors text-cream rounded-lg"
+          {isRsvpTab && !selectedEventId ? (
+            <React.Suspense fallback={
+              <div className="flex flex-col items-center justify-center py-24 gap-4">
+                <Loader2 className="animate-spin text-gold" size={40} />
+                <p className="text-sm text-text-secondary uppercase tracking-widest font-thin">Loading Events Workspace...</p>
+              </div>
+            }>
+              <EventsTab 
+                events={events}
+                selectedEventId={selectedEventId}
+                onSelectEvent={(id) => {
+                  setSelectedEventId(id);
+                  setActiveTab('guests'); // Switch to RSVPs tab inside Event Dashboard
+                }}
+                onCreateEvent={handleCreateEvent}
+                onDeleteEvent={handleDeleteEvent}
+                onUpdateEventStatus={handleUpdateEventStatus}
               />
-            </div>
-            
-            <div className="flex gap-4">
+            </React.Suspense>
+          ) : (
+            <>
+              {selectedEventId && (
+                <div className="mb-8 bg-gradient-to-r from-[#181512] via-[#241e17] to-[#181512] border border-gold/30 rounded-2xl p-6 relative overflow-hidden shadow-xl">
+                  {/* Visual decorations */}
+                  <div className="absolute top-0 right-0 w-48 h-48 bg-gold/5 rounded-full filter blur-3xl" />
+                  <div className="absolute -bottom-10 -left-10 w-36 h-36 bg-gold/5 rounded-full filter blur-2xl" />
+                  
+                  <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2.5 py-0.5 rounded bg-gold/10 text-gold border border-gold/20 text-[9px] uppercase tracking-widest font-mono font-bold">
+                          Premium Event Workspace
+                        </span>
+                        <span className={`px-2 py-0.5 rounded-full text-[9px] uppercase tracking-wider font-mono font-bold ${
+                          events.find(e => e.id === selectedEventId)?.status === 'Active' 
+                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                            : events.find(e => e.id === selectedEventId)?.status === 'Completed'
+                            ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                            : 'bg-white/10 text-text-secondary border border-white/5'
+                        }`}>
+                          {events.find(e => e.id === selectedEventId)?.status || 'Active'}
+                        </span>
+                      </div>
+
+                      <h2 className="font-serif text-2xl sm:text-3xl text-cream tracking-tight">
+                        {events.find(e => e.id === selectedEventId)?.name}
+                      </h2>
+
+                      <div className="flex flex-wrap items-center gap-y-1.5 gap-x-4 text-xs font-serif text-gold/90">
+                        <span className="flex items-center gap-1">
+                          <Heart size={12} className="text-[#ff6b8b]" />
+                          {events.find(e => e.id === selectedEventId)?.bride} & {events.find(e => e.id === selectedEventId)?.groom}
+                        </span>
+                        <span className="text-white/20 font-sans">•</span>
+                        <span className="flex items-center gap-1 text-text-secondary font-mono text-[11px]">
+                          <Clock size={12} className="text-white/30" />
+                          {events.find(e => e.id === selectedEventId)?.date}
+                        </span>
+                        <span className="text-white/20 font-sans">•</span>
+                        <span className="flex items-center gap-1 text-text-secondary font-mono text-[11px]">
+                          <MapPin size={12} className="text-white/30" />
+                          {events.find(e => e.id === selectedEventId)?.venue}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Mini statistics badges */}
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="px-4 py-2 bg-black/40 border border-white/5 rounded-xl text-center min-w-[70px]">
+                        <span className="block text-[8px] uppercase tracking-widest text-text-secondary font-mono">RSVPs</span>
+                        <span className="text-sm font-bold text-cream">{displayRsvps.filter(r => r.attending).length}</span>
+                      </div>
+                      <div className="px-4 py-2 bg-black/40 border border-white/5 rounded-xl text-center min-w-[70px]">
+                        <span className="block text-[8px] uppercase tracking-widest text-text-secondary font-mono">Cabs</span>
+                        <span className="text-sm font-bold text-cream">{displayTransports.filter(t => t.need_cab).length}</span>
+                      </div>
+                      <div className="px-4 py-2 bg-black/40 border border-white/5 rounded-xl text-center min-w-[70px]">
+                        <span className="block text-[8px] uppercase tracking-widest text-text-secondary font-mono">Rooms</span>
+                        <span className="text-sm font-bold text-cream">{displayRooms.length}</span>
+                      </div>
+
+                      <button 
+                        onClick={() => setSelectedEventId(null)} 
+                        className="ml-2 px-4 py-2.5 border border-gold/40 hover:bg-gold/10 text-gold text-[10px] uppercase tracking-widest font-bold rounded-xl transition-all active:scale-95 flex items-center gap-1.5 shrink-0"
+                      >
+                        <RefreshCcw size={12} /> Switch Event
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+                <div className="relative flex-grow max-w-md">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary" size={18} />
+                  <input 
+                    type="text" 
+                    placeholder="Filter index search..." 
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                    className="w-full bg-white/5 border border-gold/10 pl-12 pr-6 py-3 text-sm outline-none focus:border-gold transition-colors text-cream rounded-lg"
+                  />
+                </div>
+                
+                <div className="flex gap-4">
               {activeTab === 'families' && (
                 <button onClick={() => setShowAddFamily(true)} className="px-6 py-3 bg-gold text-dark text-[0.65rem] uppercase tracking-widest font-bold flex items-center gap-2 rounded-lg hover:brightness-110 active:scale-95 transition-all">
                   <Plus size={16} /> New Passcode
@@ -712,7 +958,7 @@ export default function AdminDashboard() {
                 </button>
               )}
               <button 
-                onClick={handleExport}
+                onClick={() => handleExport()}
                 title="Export Data CSV File"
                 className="p-3 border border-gold/20 text-text-secondary hover:text-gold rounded-lg transition-colors hover:border-gold/40"
               >
@@ -772,10 +1018,10 @@ export default function AdminDashboard() {
                   />
                 )}
                 {activeTab === 'transport' && (
-                  <TransportTab transports={transports} families={families} />
+                  <TransportTab transports={displayTransports} families={displayFamilies} />
                 )}
                 {activeTab === 'rooms' && (
-                  <RoomsTab rooms={rooms} families={families} onRefresh={fetchData} showToast={showToast} onRemove={(id) => setRooms(prev => prev.filter(r => r.id !== id))} />
+                  <RoomsTab rooms={displayRooms} families={displayFamilies} onRefresh={fetchData} showToast={showToast} onRemove={(id) => setRooms(prev => prev.filter(r => r.id !== id))} />
                 )}
                 {activeTab === 'map' && (
                   <MapTab showToast={showToast} onRefreshAll={fetchData} />
@@ -793,11 +1039,51 @@ export default function AdminDashboard() {
                   <SecurityTab />
                 )}
                 {activeTab === 'documents' && (
-                  <DocumentsTab families={families} onRefresh={fetchData} showToast={showToast} />
+                  <DocumentsTab families={displayFamilies} onRefresh={fetchData} showToast={showToast} />
+                )}
+                {activeTab === 'events' && (
+                  <EventsTab 
+                    events={events}
+                    selectedEventId={selectedEventId}
+                    onSelectEvent={(id) => {
+                      setSelectedEventId(id);
+                      setActiveTab('guests'); // Switch to RSVPs tab inside Event Dashboard
+                    }}
+                    onCreateEvent={handleCreateEvent}
+                    onDeleteEvent={handleDeleteEvent}
+                    onUpdateEventStatus={handleUpdateEventStatus}
+                  />
+                )}
+                {activeTab === 'checkin' && (
+                  <CheckinTab 
+                    rsvps={displayRsvps}
+                    onToggleCheckin={handleToggleCheckin}
+                  />
+                )}
+                {activeTab === 'notifications' && (
+                  <NotificationsTab 
+                    selectedEventId={selectedEventId || ''}
+                    confirmedGuestsCount={displayRsvps.filter(r => r.attending).length}
+                    hotelGuestsCount={displayRooms.length}
+                    transportGuestsCount={displayTransports.filter(t => t.need_cab).length}
+                    showToast={showToast}
+                  />
+                )}
+                {activeTab === 'reports' && (
+                  <ReportsTab 
+                    rsvps={displayRsvps}
+                    families={displayFamilies}
+                    transports={displayTransports}
+                    rooms={displayRooms}
+                    eventName={events.find(e => e.id === selectedEventId)?.name || 'Event'}
+                    onExport={handleExport}
+                  />
                 )}
               </React.Suspense>
             )}
           </div>
+          </>
+          )}
         </div>
       </div>
 
