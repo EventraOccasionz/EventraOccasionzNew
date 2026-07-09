@@ -56,6 +56,7 @@ export const adminService = {
     }
     const path = 'families';
     const cleanData: Family = {
+      ...family,
       name: family.name || '',
       access_code: (family.access_code || '').toUpperCase(),
       slug: family.slug || '',

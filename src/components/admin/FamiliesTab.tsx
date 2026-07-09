@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Family } from '../../types';
-import { Trash2, QrCode, X, Printer, Edit2, Upload, Loader2, Image as ImageIcon, Save, Check, Type, FileText, Download } from 'lucide-react';
+import { Trash2, QrCode, X, Printer, Edit2, Upload, Loader2, Image as ImageIcon, Save, Check, Type, FileText, Download, Copy } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { dataService } from '../../lib/dataService';
 
@@ -17,6 +17,19 @@ export default function FamiliesTab({
 }: FamiliesTabProps) {
   const [qrFamily, setQrFamily] = useState<Family | null>(null);
   const [editFamily, setEditFamily] = useState<Family | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const handleCopyLink = (slug: string, id: string) => {
+    const fullLink = `${window.location.origin}${window.location.pathname}#/invite/${slug}`;
+    navigator.clipboard.writeText(fullLink)
+      .then(() => {
+        setCopiedId(id);
+        setTimeout(() => setCopiedId(null), 2000);
+      })
+      .catch(err => {
+        console.error('Failed to copy link:', err);
+      });
+  };
   
   // Edit Form States
   const [saving, setSaving] = useState(false);
@@ -127,7 +140,24 @@ export default function FamiliesTab({
               <td className="py-4 px-4 text-xs italic text-gold/80 max-w-[180px] truncate">
                 {f.custom_title || <span className="opacity-30">— Default —</span>}
               </td>
-              <td className="py-4 px-4 text-[10px] font-mono">/invite/{f.slug}</td>
+              <td className="py-4 px-4 text-[10px] font-mono">
+                <div className="flex items-center gap-1.5">
+                  <span>/invite/{f.slug}</span>
+                  <button
+                    onClick={() => handleCopyLink(f.slug, f.id)}
+                    className="p-1 text-text-secondary hover:text-gold transition-colors hover:bg-white/5 rounded"
+                    title="Copy Full Invite Link"
+                  >
+                    {copiedId === f.id ? (
+                      <span className="text-[9px] text-green-400 font-sans font-bold flex items-center gap-0.5">
+                        <Check size={11} /> Copied!
+                      </span>
+                    ) : (
+                      <Copy size={12} />
+                    )}
+                  </button>
+                </div>
+              </td>
               <td className="py-4 px-4 text-gold tracking-widest font-bold text-sm">{f.access_code}</td>
               <td className="py-4 px-4 text-center">
                 {f.guest_image ? (
@@ -141,6 +171,17 @@ export default function FamiliesTab({
               </td>
               <td className="py-4 px-4 text-center text-cream font-bold">{f.max_guests}</td>
               <td className="py-4 px-4 text-right flex items-center justify-end gap-2">
+                <button 
+                  onClick={() => handleCopyLink(f.slug, f.id)}
+                  className="p-1.5 text-text-secondary hover:text-gold transition-colors hover:bg-white/5 rounded"
+                  title="Copy Full Invite Link"
+                >
+                  {copiedId === f.id ? (
+                    <Check size={15} className="text-green-400" />
+                  ) : (
+                    <Copy size={15} />
+                  )}
+                </button>
                 <button 
                   onClick={() => startEdit(f)}
                   className="p-1.5 text-text-secondary hover:text-gold transition-colors hover:bg-white/5 rounded"
@@ -161,8 +202,7 @@ export default function FamiliesTab({
                   title="Delete Invitation Passcode Group"
                 >
                   <Trash2 size={15} />
-                </button>
-              </td>
+                </button></td>
             </tr>
           ))}
           {filteredFamilies.length === 0 && (
