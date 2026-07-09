@@ -96,7 +96,13 @@ export default function RoomsTab({
                   <p className="text-cream font-medium">{f.name}</p>
                 </td>
                 <td className="py-4 px-4 text-cream">{r?.hotel_name || 'Unassigned'}</td>
-                <td className="py-4 px-4 font-mono text-gold text-xs">{r?.room_number || 'TBD'}</td>
+                <td className="py-4 px-4 font-mono text-gold text-xs">
+                  {r?.room_number ? (
+                    <span>{r.room_number} {r.floor ? `(${r.floor})` : ''}</span>
+                  ) : (
+                    'TBD'
+                  )}
+                </td>
                 <td className="py-4 px-4">{r?.check_in ? r.check_in : '-'}</td>
                 <td className="py-4 px-4">{r?.check_out ? r.check_out : '-'}</td>
                 <td className="py-4 px-4">
@@ -157,16 +163,28 @@ export default function RoomsTab({
                 />
               </div>
               
-              <div>
-                <label className="block text-[10px] uppercase text-text-secondary tracking-widest mb-2">Room / Suite Number</label>
-                <input
-                  type="text"
-                  required
-                  value={editingRoom.room_number || ''}
-                  onChange={e => setEditingRoom({...editingRoom, room_number: e.target.value})}
-                  className="w-full bg-black/40 border border-white/10 rounded px-4 py-2 text-sm text-cream focus:border-gold focus:outline-none"
-                  placeholder="e.g. 402"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] uppercase text-text-secondary tracking-widest mb-2">Room / Suite Number</label>
+                  <input
+                    type="text"
+                    required
+                    value={editingRoom.room_number || ''}
+                    onChange={e => setEditingRoom({...editingRoom, room_number: e.target.value})}
+                    className="w-full bg-black/40 border border-white/10 rounded px-4 py-2 text-sm text-cream focus:border-gold focus:outline-none"
+                    placeholder="e.g. 402"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] uppercase text-text-secondary tracking-widest mb-2">Floor</label>
+                  <input
+                    type="text"
+                    value={editingRoom.floor || ''}
+                    onChange={e => setEditingRoom({...editingRoom, floor: e.target.value})}
+                    className="w-full bg-black/40 border border-white/10 rounded px-4 py-2 text-sm text-cream focus:border-gold focus:outline-none"
+                    placeholder="e.g. 4th Floor"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">

@@ -302,27 +302,31 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleToggleCheckin = async (id: string, currentStatus: boolean) => {
+  const handleToggleCheckin = async (id: string, currentStatus: boolean, checkinTime?: string) => {
     const updatedStatus = !currentStatus;
+    const timeToSave = updatedStatus ? (checkinTime || new Date().toISOString()) : null;
     try {
       if (dataService.isConfigured()) {
-        await setDoc(doc(db, 'rsvp', id), { checked_in: updatedStatus }, { merge: true });
+        await setDoc(doc(db, 'rsvp', id), { 
+          checked_in: updatedStatus, 
+          checked_in_at: timeToSave 
+        }, { merge: true });
       } else {
         const sessionMock = JSON.parse(sessionStorage.getItem('mock_rsvps') || '[]');
         const exists = sessionMock.some((r: any) => r.id === id);
         let updatedMock;
         if (exists) {
-          updatedMock = sessionMock.map((r: any) => r.id === id ? { ...r, checked_in: updatedStatus } : r);
+          updatedMock = sessionMock.map((r: any) => r.id === id ? { ...r, checked_in: updatedStatus, checked_in_at: timeToSave } : r);
         } else {
           const matched = rsvps.find(r => r.id === id);
           if (matched) {
-            sessionMock.push({ ...matched, checked_in: updatedStatus });
+            sessionMock.push({ ...matched, checked_in: updatedStatus, checked_in_at: timeToSave });
           }
           updatedMock = sessionMock;
         }
         sessionStorage.setItem('mock_rsvps', JSON.stringify(updatedMock));
       }
-      setRsvps(prev => prev.map(r => r.id === id ? { ...r, checked_in: updatedStatus } : r));
+      setRsvps(prev => prev.map(r => r.id === id ? { ...r, checked_in: updatedStatus, checked_in_at: timeToSave || undefined } : r));
       showToast('success', updatedStatus ? 'Guest marked as checked in.' : 'Guest check-in cleared.');
     } catch (err) {
       console.error(err);
@@ -1018,7 +1022,12 @@ export default function AdminDashboard() {
                   />
                 )}
                 {activeTab === 'transport' && (
-                  <TransportTab transports={displayTransports} families={displayFamilies} />
+                  <TransportTab 
+                    transports={displayTransports} 
+                    families={displayFamilies} 
+                    onRefresh={fetchData} 
+                    showToast={showToast} 
+                  />
                 )}
                 {activeTab === 'rooms' && (
                   <RoomsTab rooms={displayRooms} families={displayFamilies} onRefresh={fetchData} showToast={showToast} onRemove={(id) => setRooms(prev => prev.filter(r => r.id !== id))} />
@@ -1057,6 +1066,8 @@ export default function AdminDashboard() {
                 {activeTab === 'checkin' && (
                   <CheckinTab 
                     rsvps={displayRsvps}
+                    families={displayFamilies}
+                    rooms={displayRooms}
                     onToggleCheckin={handleToggleCheckin}
                   />
                 )}

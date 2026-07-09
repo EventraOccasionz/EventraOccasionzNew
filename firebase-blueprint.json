@@ -176,6 +176,18 @@
         "updated_at": { "type": "string" }
       },
       "required": ["venue_name", "address"]
+    },
+    "EventDetails": {
+      "title": "Event Details",
+      "description": "Granular parameters including budgets, tasks, vendors, and timelines per event workspace",
+      "type": "object",
+      "properties": {
+        "tasks": { "type": "array" },
+        "vendors": { "type": "array" },
+        "budget": { "type": "object" },
+        "timeline": { "type": "array" },
+        "staff": { "type": "array" }
+      }
     }
   },
   "firestore": {
@@ -218,6 +230,10 @@
     "venue_settings": {
       "schema": "VenueSetting",
       "description": "Customized venue location coordinates and map image source definitions"
+    },
+    "event_details": {
+      "schema": "EventDetails",
+      "description": "Granular parameters including budgets, tasks, vendors, and timelines per event workspace"
     }
   }
 }

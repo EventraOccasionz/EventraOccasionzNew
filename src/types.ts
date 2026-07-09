@@ -21,6 +21,7 @@ export interface Family {
   custom_greeting?: string; // Optional customized welcome narrative
   custom_title?: string; // Optional relationship title/caption (e.g. "Beloved Groom's Friends", "Our Honored Uncle")
   documents?: UploadedDocument[];
+  rsvp_locked?: boolean; // Admin can lock RSVP editing
 }
 
 export interface RSVP {
@@ -36,8 +37,31 @@ export interface RSVP {
   dietary_requirements?: string;
   events: string[]; // e.g. ["Haldi", "Mehndi", "Wedding"]
   checked_in?: boolean;
+  checked_in_at?: string; // Save check-in time for admin check-in
   created_at: string;
   updated_at?: string;
+  
+  // Premium RSVP Fields
+  family_name?: string;
+  primary_guest?: string;
+  mobile_number?: string;
+  adults_count?: number;
+  family_members?: string[]; // Names of all family members
+  arrival_method?: 'Flight' | 'Train' | 'Bus' | 'Car' | 'Other';
+  pickup_required?: boolean;
+  pickup_location?: string;
+  arrival_date?: string;
+  arrival_time?: string;
+  flight_number?: string;
+  train_number?: string;
+  drop_required?: boolean;
+  drop_location?: string;
+  drop_date?: string;
+  drop_time?: string;
+  aadhaar_url?: string; // Aadhaar card upload
+  special_requests?: string;
+  functions_attending?: string[]; // Functions list they are attending
+  rsvp_locked?: boolean; // Admin can lock individual RSVP
 }
 
 export interface TransportRequest {
@@ -51,6 +75,12 @@ export interface TransportRequest {
   details?: string;
   created_at: string;
   updated_at?: string;
+  
+  // Premium Vehicle Fields published by Admin
+  driver_name?: string;
+  vehicle_number?: string;
+  driver_contact?: string;
+  pickup_time?: string;
 }
 
 export interface RoomBooking {
@@ -59,6 +89,7 @@ export interface RoomBooking {
   family_id: string;
   hotel_name?: string;
   room_number?: string;
+  floor?: string; // Room floor
   check_in?: string;
   check_out?: string;
   status: 'Pending' | 'Confirmed' | 'Checked-in' | 'Checked-out';
