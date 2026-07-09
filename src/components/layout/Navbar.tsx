@@ -145,7 +145,7 @@ export default function Navbar() {
           {isAdmin && (
             <Link 
               to="/admin" 
-              className="hidden lg:inline-block px-4 py-1.5 border border-gold/40 hover:border-gold rounded-full text-[10px] text-gold uppercase tracking-widest transition-all font-mono shadow-[0_4px_15px_rgba(201,168,76,0.1)]"
+              className="hidden sm:inline-block px-4 py-1.5 border border-gold/40 hover:border-gold rounded-full text-[10px] text-gold uppercase tracking-widest transition-all font-mono shadow-[0_4px_15px_rgba(201,168,76,0.1)]"
             >
               Admin Panel
             </Link>
