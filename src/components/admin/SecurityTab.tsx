@@ -26,6 +26,7 @@ export default function SecurityTab() {
         throw new Error(errorMessage);
       }
       const data = await res.json();
+      setEnabled(data.enabled);
     } catch (err: any) {
       setError(err.message || 'Error communicating with security servers.');
     } finally {
